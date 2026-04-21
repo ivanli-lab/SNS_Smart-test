@@ -1,4 +1,3 @@
-cat <<EOF > start.command
 #!/bin/bash
 cd "\$(dirname "\$0")"
 echo "========================================"
