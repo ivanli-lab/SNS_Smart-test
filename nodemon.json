@@ -1,0 +1,9 @@
+{
+  "ignore": [
+    "logs/*",
+    "terminals/*",
+    "node_modules/*",
+    ".git/*"
+  ],
+  "ext": "js,mjs,cjs,json,html,css"
+}

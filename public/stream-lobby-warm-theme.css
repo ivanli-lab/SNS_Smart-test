@@ -1,0 +1,308 @@
+/* =========================================================
+   Stream Lobby Theme Pack — Warm Creamy (may)
+   - Drop-in CSS theme using provided palette
+   - Put this file AFTER your existing CSS so it overrides
+   ========================================================= */
+
+/* ===== Design Tokens ===== */
+:root{
+  /* Core surfaces */
+  --bg-main: #F8F1E3;       /* Main Background */
+  --bg-panel: #FFF5E5;      /* Panel / Card */
+  --bg-sidebar: #BCADA0;    /* Sidebar */
+  --bg-input: #FFFFFF;      /* Inputs */
+
+  /* Buttons */
+  --btn-primary: #F3B989;   /* Primary warm orange */
+  --btn-secondary: #F2E3A3; /* Secondary light yellow */
+
+  /* Typography / icons */
+  --text-main: #8F7053;
+
+  /* Status */
+  --status-total: #E9CA83;
+  --status-pass:  #F3B989;
+  --status-fail:  #DB9A8B;
+
+  /* Borders */
+  --border-soft: rgba(143, 112, 83, 0.14);
+  --border: rgba(143, 112, 83, 0.22);
+
+  /* Shadows (warm + soft) */
+  --shadow-sm: 0 2px 8px rgba(143,112,83,0.10);
+  --shadow-md: 0 8px 24px rgba(143,112,83,0.12);
+
+  /* Radius */
+  --r-lg: 18px;
+  --r-md: 14px;
+  --r-sm: 10px;
+
+  /* Interaction */
+  --primary-hover:   #ECA970;
+  --primary-pressed: #E39A5C;
+
+  --secondary-hover:   #EBD98F;
+  --secondary-pressed: #E2CE7D;
+
+  --disabled-bg: #E9E1D6;
+  --disabled-text: #B9A796;
+
+  /* Focus ring */
+  --focus: 0 0 0 3px rgba(243,185,137,0.35);
+}
+
+/* ===== Page base ===== */
+body{
+  background: var(--bg-main);
+  color: var(--text-main);
+}
+
+/* ===== Global cards/panels ===== */
+.card-panel{
+  background: var(--bg-panel) !important;
+  border: 1px solid var(--border-soft) !important;
+  border-radius: var(--r-lg) !important;
+  box-shadow: var(--shadow-md) !important;
+  color: var(--text-main);
+}
+
+.card-panel h1,
+.card-panel h2,
+.card-panel h3,
+.card-panel h4{
+  color: var(--text-main);
+}
+
+/* ===== Inputs (including #urlInput) ===== */
+.card-panel input[type="text"],
+.card-panel input[type="url"],
+.card-panel input,
+#urlInput{
+  background: var(--bg-input) !important;
+  color: var(--text-main) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r-sm) !important;
+  box-shadow: var(--shadow-sm) !important;
+  outline: none;
+}
+
+.card-panel input::placeholder{
+  color: rgba(143,112,83,0.55);
+}
+
+.card-panel input:focus{
+  border-color: rgba(143,112,83,0.32) !important;
+  box-shadow: var(--shadow-sm), var(--focus) !important;
+}
+
+/* ===== Sidebar ===== */
+.sidebar{
+  background: var(--bg-sidebar) !important;
+  color: var(--text-main);
+  border-right: 1px solid rgba(143,112,83,0.14);
+}
+
+.sidebar-header h1{
+  color: var(--text-main);
+}
+
+.sidebar-header .subtitle{
+  color: rgba(143,112,83,0.72);
+}
+
+.sidebar-nav .nav-btn{
+  display: block;
+  text-decoration: none;
+  color: var(--text-main) !important;
+
+  background: transparent;
+  border: 1px solid rgba(143,112,83,0.18);
+  border-radius: var(--r-lg);
+
+  padding: 12px 14px;
+  margin: 10px 0;
+
+  box-shadow: none;
+  transition: transform .06s ease, background-color .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+
+.sidebar-nav .nav-btn:hover{
+  background: rgba(255,245,229,0.65);
+  box-shadow: var(--shadow-sm);
+  border-color: rgba(143,112,83,0.22);
+}
+
+.sidebar-nav .nav-btn:active{
+  transform: translateY(1px);
+}
+
+.sidebar-nav .nav-btn.active{
+  background: var(--btn-primary) !important;
+  border-color: rgba(143,112,83,0.22) !important;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ===== Buttons (base) ===== */
+.btn{
+  border-radius: var(--r-md) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-main) !important;
+  box-shadow: var(--shadow-sm) !important;
+  transition: transform .06s ease, background-color .12s ease, box-shadow .12s ease, opacity .12s ease;
+}
+
+.btn:active{ transform: translateY(1px); }
+
+/* Start = Primary */
+.btn.btn-primary,
+#startBtn{
+  background: var(--btn-primary) !important;
+}
+.btn.btn-primary:hover,
+#startBtn:hover{ background: var(--primary-hover) !important; }
+.btn.btn-primary:active,
+#startBtn:active{ background: var(--primary-pressed) !important; }
+
+/* Stop = Secondary (override btn-danger) */
+.btn.btn-danger,
+#stopBtn{
+  background: var(--btn-secondary) !important;
+}
+.btn.btn-danger:hover,
+#stopBtn:hover{ background: var(--secondary-hover) !important; }
+.btn.btn-danger:active,
+#stopBtn:active{ background: var(--secondary-pressed) !important; }
+
+/* Disabled */
+.btn:disabled,
+.btn.is-disabled{
+  background: var(--disabled-bg) !important;
+  color: var(--disabled-text) !important;
+  border-color: rgba(143,112,83,0.10) !important;
+  box-shadow: none !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+  opacity: 1 !important;
+}
+
+/* ===== Test Summary ===== */
+#cardSummary .card-summary{
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+#cardSummary .stat{
+  border-radius: 12px;
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-main);
+  padding: 12px 10px;
+  text-align: center;
+}
+
+#cardSummary .stat-value{
+  color: var(--text-main);
+  font-weight: 700;
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+#cardSummary .stat-label{
+  color: rgba(143,112,83,0.78);
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+#cardSummary .stat.total{ background: var(--status-total) !important; }
+#cardSummary .stat.pass { background: var(--status-pass)  !important; }
+#cardSummary .stat.fail { background: var(--status-fail)  !important; }
+
+/* ===== Test Flow ===== */
+#testList{
+  display: grid;
+  gap: 12px;
+}
+
+.test-item{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  background: rgba(255,255,255,0.55);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+
+  box-shadow: var(--shadow-sm);
+}
+
+.test-item-label{ color: var(--text-main); }
+
+.test-item-status{
+  color: var(--text-main);
+  font-weight: 700;
+}
+
+/* pending / skipped: keep warm brown (no blue) */
+.test-item.pending .test-item-status,
+.test-item.skipped .test-item-status{
+  color: var(--text-main);
+}
+
+/* success: PASS tint */
+.test-item.success{
+  background: rgba(243,185,137,0.35);
+  border-color: rgba(143,112,83,0.18);
+}
+.test-item.success .test-item-status{
+  color: var(--text-main);
+}
+
+/* failed: FAIL tint */
+.test-item.failed{
+  background: rgba(219,154,139,0.32);
+  border-color: rgba(143,112,83,0.18);
+}
+.test-item.failed .test-item-status{
+  color: var(--text-main);
+}
+
+.test-item:hover{
+  box-shadow: var(--shadow-md);
+  border-color: rgba(143,112,83,0.22);
+}
+
+/* ===== Current Step ===== */
+#placeholderText{
+  color: var(--text-main);
+  background: rgba(255,255,255,0.55);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Spinner */
+.loading-spinner{
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 3px solid rgba(143,112,83,0.18);
+  border-top-color: var(--btn-primary);
+  animation: spin 0.9s linear infinite;
+  margin-top: 12px;
+}
+
+.hidden{ display: none !important; }
+
+@keyframes spin{
+  to{ transform: rotate(360deg); }
+}
+
+/* Optional: unify icons (if your icons are SVG/text) */
+.icon, .material-icons, svg{
+  color: var(--text-main);
+  fill: currentColor;
+  stroke: currentColor;
+}
