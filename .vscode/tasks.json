@@ -1,0 +1,12 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "open-stream-lobby",
+      "type": "shell",
+      "command": "explorer.exe",
+      "args": ["http://localhost:3000/"],
+      "problemMatcher": []
+    }
+  ]
+}

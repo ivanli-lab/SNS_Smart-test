@@ -1,0 +1,50 @@
+# 依賴套件
+node_modules/
+package-lock.json
+
+# 環境變數
+.env
+.env.local
+.env.*.local
+
+# 日誌
+logs/
+debug/
+*.log
+
+# 備份檔案
+*.backup
+*_old.js
+*_demo.js
+*_fix.js
+
+# 測試結果
+test-results/
+playwright-report/
+test-screenshots/
+
+# 作業系統
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+!.vscode/
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# 臨時檔案
+tmp/
+temp/
+user_data/
+
+
+
+
+
+
+
