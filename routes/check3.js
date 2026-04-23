@@ -10,82 +10,82 @@ const stepResults = {};
 const totalSteps = 7;
 
 const GAME_COORDINATE_MAP = {
-  "4100": { 
-    spin: { x: 0.9209, y: 0.850 }, 
-    auto: { x: 0.7980, y: 0.9518 }, 
-    extra: { x: 0.4041, y: 0.1107 }, 
-    ok: { x: 0.4978, y: 0.9193 } 
+  "4100": {
+    spin: { x: 0.9209, y: 0.850 },
+    auto: { x: 0.7980, y: 0.9518 },
+    extra: { x: 0.4041, y: 0.1107 },
+    ok: { x: 0.4978, y: 0.9193 }
   },
-  "4401": { 
-    spin: { x: 0.9202, y: 0.6758 }, 
-    auto: { x: 0.8258, y: 0.9206 }, 
-    ok: { x: 0.4993, y: 0.8698 } 
+  "4401": {
+    spin: { x: 0.9202, y: 0.6758 },
+    auto: { x: 0.8258, y: 0.9206 },
+    ok: { x: 0.4993, y: 0.8698 }
   },
-  "2702": { 
-    spin: { x: 0.9165, y: 0.7214 }, 
-    auto: { x: 0.8302, y: 0.8906 }, 
-    extra: { x: 0.2511, y: 0.2708 }, 
-    ok: { x: 0.5044, y: 0.6172 } 
+  "2702": {
+    spin: { x: 0.9165, y: 0.7214 },
+    auto: { x: 0.8302, y: 0.8906 },
+    extra: { x: 0.2511, y: 0.2708 },
+    ok: { x: 0.5044, y: 0.6172 }
   },
-  "4600": { 
-    spin: { x: 0.9012, y: 0.7643 }, 
-    auto: { x: 0.8441, y: 0.9219 }, 
-    ok: { x: 0.4985, y: 0.7669 } 
+  "4600": {
+    spin: { x: 0.9012, y: 0.7643 },
+    auto: { x: 0.8441, y: 0.9219 },
+    ok: { x: 0.4985, y: 0.7669 }
   },
-  "2900": { 
-    spin: { x: 0.9004, y: 0.7515 }, 
-    auto: { x: 0.7906, y: 0.9131 }, 
-    extra: { x: 0.3770, y: 0.4362 }, 
-    ok: { x: 0.5051, y: 0.6095 } 
+  "2900": {
+    spin: { x: 0.9004, y: 0.7515 },
+    auto: { x: 0.7906, y: 0.9131 },
+    extra: { x: 0.3770, y: 0.4362 },
+    ok: { x: 0.5051, y: 0.6095 }
   },
-  "3800": { 
-    spin: { x: 0.8968, y: 0.7385 }, 
-    auto: { x: 0.7921, y: 0.9183 }, 
-    extra: { x: 0.3895, y: 0.1703 }, 
-    ok: { x: 0.5007, y: 0.8883 } 
+  "3800": {
+    spin: { x: 0.8968, y: 0.7385 },
+    auto: { x: 0.7921, y: 0.9183 },
+    extra: { x: 0.3895, y: 0.1703 },
+    ok: { x: 0.5007, y: 0.8883 }
   },
-  "3900": { 
-    spin: { x: 0.8990, y: 0.7346 }, 
-    auto: { x: 0.7884, y: 0.9079 }, 
-    extra: { x: 0.2987, y: 0.2915 }, 
-    ok: { x: 0.5007, y: 0.7645 } 
+  "3900": {
+    spin: { x: 0.8990, y: 0.7346 },
+    auto: { x: 0.7884, y: 0.9079 },
+    extra: { x: 0.2987, y: 0.2915 },
+    ok: { x: 0.5007, y: 0.7645 }
   },
-  "4300": { 
-    spin: { x: 0.8221, y: 0.6641 }, 
-    auto: { x: 0.8272, y: 0.9310 }, 
-    ok: { x: 0.4993, y: 0.6862 } 
+  "4300": {
+    spin: { x: 0.8221, y: 0.6641 },
+    auto: { x: 0.8272, y: 0.9310 },
+    ok: { x: 0.4993, y: 0.6862 }
   },
-  "2600": { 
-    spin: { x: 0.9136, y: 0.7305 }, 
-    auto: { x: 0.8302, y: 0.8880 }, 
-    extra: { x: 0.2496, y: 0.2878 }, 
-    ok: { x: 0.5059, y: 0.7344 } 
+  "2600": {
+    spin: { x: 0.9136, y: 0.7305 },
+    auto: { x: 0.8302, y: 0.8880 },
+    extra: { x: 0.2496, y: 0.2878 },
+    ok: { x: 0.5059, y: 0.7344 }
   },
-  "4400": { 
-    spin: { x: 0.9202, y: 0.6836 }, 
-    auto: { x: 0.8236, y: 0.9232 }, 
-    ok: { x: 0.4985, y: 0.8646 } 
+  "4400": {
+    spin: { x: 0.9202, y: 0.6836 },
+    auto: { x: 0.8236, y: 0.9232 },
+    ok: { x: 0.4985, y: 0.8646 }
   },
-  "4301": { 
-    spin: { x: 0.9561, y: 0.6432 }, 
-    auto: { x: 0.8294, y: 0.9336 }, 
-    ok: { x: 0.4927, y: 0.8789 } 
+  "4301": {
+    spin: { x: 0.9561, y: 0.6432 },
+    auto: { x: 0.8294, y: 0.9336 },
+    ok: { x: 0.4927, y: 0.8789 }
   },
-  "4500": { 
-    spin: { x: 0.8873, y: 0.7669 }, 
-    auto: { x: 0.8250, y: 0.9453 }, 
-    ok: { x: 0.4978, y: 0.7279 } 
+  "4500": {
+    spin: { x: 0.8873, y: 0.7669 },
+    auto: { x: 0.8250, y: 0.9453 },
+    ok: { x: 0.4978, y: 0.7279 }
   },
-  "4200": { 
-    spin: { x: 0.8931, y: 0.7695 }, 
-    auto: { x: 0.8587, y: 0.9414 }, 
-    ok: { x: 0.5051, y: 0.7031 } 
+  "4200": {
+    spin: { x: 0.8931, y: 0.7695 },
+    auto: { x: 0.8587, y: 0.9414 },
+    ok: { x: 0.5051, y: 0.7031 }
   },
-  "3500": { 
-    spin: { x: 0.9026, y: 0.7398 }, 
-    auto: { x: 0.7936, y: 0.9157 }, 
-    extra: { x: 0.3016, y: 0.2902 }, 
-    ok: { x: 0.4985, y: 0.7685 } 
+  "3500": {
+    spin: { x: 0.9026, y: 0.7398 },
+    auto: { x: 0.7936, y: 0.9157 },
+    extra: { x: 0.3016, y: 0.2902 },
+    ok: { x: 0.4985, y: 0.7685 }
   },
   "default": { spin: { x: 0.8258, y: 0.9167 }, ok: { x: 0.4985, y: 0.8711 } }
 };
@@ -94,12 +94,12 @@ class UltimateStabilityManager {
   constructor() {
     this.spinStats = { success: 0, fail: 0 };
     this.lastStep = 'INIT';
-    this.activeGamePage = null; 
+    this.activeGamePage = null;
     this.gameApiToken = null;
     this.last109At = 0;
     this.lastRenameOkAt = 0; // [新增] 用於追蹤 GS API 成功通訊
     this.lastSpinResponseAt = 0;
-    this.isInFreeGame = false; 
+    this.isInFreeGame = false;
     this.screenshotDir = path.join(__dirname, '../public/screenshots/sac');
     if (!fs.existsSync(this.screenshotDir)) fs.mkdirSync(this.screenshotDir, { recursive: true });
   }
@@ -144,12 +144,12 @@ class UltimateStabilityManager {
               this.last109At = Date.now();
             }
           }
-        } catch (e) {}
+        } catch (e) { }
       });
       page.on('close', () => {
         console.log(`\x1b[31m[${label}] 視窗已關閉 | 最後步驟: ${this.lastStep}\x1b[0m`);
       });
-    } catch (e) {}
+    } catch (e) { }
   }
 
   setupContextListeners(context) {
@@ -171,7 +171,7 @@ class UltimateStabilityManager {
           }
           if (text.includes('"command":"spin"')) {
             this.lastSpinResponseAt = Date.now();
-            
+
             // [智慧等待] 偵測 Free Game 狀態
             if (text.includes('"get_sub_game":\s*true')) {
               if (!this.isInFreeGame) {
@@ -194,14 +194,14 @@ class UltimateStabilityManager {
               }
             }
           }
-        } catch (e) {}
+        } catch (e) { }
       });
       context.on('page', newPage => {
         console.log(`\x1b[35m[CONTEXT] 偵測到新分頁: ${newPage.url()}\x1b[0m`);
-        this.activeGamePage = newPage; 
+        this.activeGamePage = newPage;
         this.setupPageListeners(newPage, 'GAME_PAGE');
       });
-    } catch (e) {}
+    } catch (e) { }
   }
 
   async findActiveGamePage(context, targetUrl) {
@@ -221,7 +221,7 @@ class UltimateStabilityManager {
         canvas = await frame.$('canvas');
         if (canvas) return canvas;
       }
-    } catch (e) {}
+    } catch (e) { }
     return null;
   }
 }
@@ -235,25 +235,25 @@ function resetProgress() {
 }
 
 async function checkWebsite(url, viewport = { width: 1366, height: 768 }, selectedGames = [], gaMode = false) {
-  const userDataDir = path.join(__dirname, '../user_data/sac_isolated'); 
+  const userDataDir = path.join(__dirname, '../user_data/sac_isolated');
   const diag = new UltimateStabilityManager();
   const results = { url, timestamp: new Date().toISOString(), checks: {} };
   const targetGames = Array.isArray(selectedGames) ? selectedGames : [];
-  
+
   if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
   let context;
   try {
     context = await chromium.launchPersistentContext(userDataDir, {
       headless: false,
-      viewport: { width: 1366, height: 768 }, 
+      viewport: { width: 1366, height: 768 },
       ignoreHTTPSErrors: true,
       args: [
-        '--disable-blink-features=AutomationControlled', 
-        '--no-sandbox', 
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
         '--window-size=1382,897' // 強制外框大小，確保內容區為 1366x768
       ]
     });
-    
+
     const page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();
     diag.setupContextListeners(context);
     diag.setupPageListeners(page, 'MAIN_PAGE');
@@ -270,7 +270,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
     // 1. 登入
     setCurrentStep('login');
     diag.logStep('LOGIN_TEST');
-    
+
     // 檢查是否需要登入
     let loginRes;
     if (await page.isVisible('input[name="account"]')) {
@@ -352,14 +352,14 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
 
     // 詢問使用者是否繼續
     const decision = await askToContinue();
-    
+
     if (decision === 'quit') {
-      if (context) await context.close().catch(() => {});
+      if (context) await context.close().catch(() => { });
       console.log('Browser closed immediately');
     } else {
       console.log('💡 瀏覽器將保持開啟 60 秒後自動關閉...');
       await new Promise(r => setTimeout(r, 60000));
-      if (context) await context.close().catch(() => {});
+      if (context) await context.close().catch(() => { });
       console.log('Browser closed');
     }
 
@@ -372,7 +372,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
 }
 
 async function getGameList(url, _apiUrl) {
-  const userDataDir = path.join(__dirname, '../user_data/sac_gamelist'); 
+  const userDataDir = path.join(__dirname, '../user_data/sac_gamelist');
   if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
   let context = null;
   try {
@@ -381,53 +381,72 @@ async function getGameList(url, _apiUrl) {
       args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-gpu']
     });
     const page = await context.newPage();
+    let interceptedJson = null;
+    page.on('response', async res => {
+      try {
+        if (res.url().includes('api')) {
+          const json = await res.json();
+          const checkArray = (obj) => {
+            if (!obj || typeof obj !== 'object') return false;
+            for (const key in obj) {
+              if (Array.isArray(obj[key]) && obj[key].length > 0 && obj[key][0].platform) return true;
+              if (checkArray(obj[key])) return true;
+            }
+            return false;
+          };
+          if (checkArray(json)) interceptedJson = json;
+        }
+      } catch (e) { }
+    });
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(5000);
     if (await page.isVisible('input[name="account"]')) {
       console.log('正在進行 SAC 登入...');
-      await page.fill('input[name="account"]', 'game07');
-      await page.fill('input[name="password"]', 'ga07');
+      await page.fill('input[name="account"]', 'qa_test03');
+      await page.fill('input[name="password"]', 'qa03');
       await page.click('button[type="submit"]');
       await page.waitForTimeout(3000);
     }
 
     // [第一步] 點擊主選單 "Streaming"
     console.log('正在嘗試開啟 Streaming 選單...');
-    const streamingSelector = 'text=Streaming';
     try {
-      await page.waitForSelector(streamingSelector, { timeout: 5000 });
-      const menu = page.locator(streamingSelector).first();
-      await menu.scrollIntoViewIfNeeded();
-      await menu.click({ force: true });
-      await page.waitForTimeout(1500);
-      await page.screenshot({ path: path.join(__dirname, '../public/screenshots/sac_debug_1_streaming_clicked.png') });
-    } catch (e) {
-      console.log('⚠️ 直接點擊 Streaming 文字失敗，嘗試搜尋父容器...');
-      await page.evaluate(() => {
-        const el = Array.from(document.querySelectorAll('li, div')).find(e => e.innerText?.trim() === 'Streaming');
-        if (el) el.click();
-      });
-    }
-
-    // [第二步] 點擊子選單 "Game List"
-    console.log('正在嘗試點擊 Game List 子選單...');
-    try {
-      const subMenuSelector = 'text=Game List';
-      await page.waitForSelector(subMenuSelector, { timeout: 5000 });
-      const subMenu = page.locator(subMenuSelector).first();
-      await subMenu.click({ force: true });
+      // 嘗試找尋包含 Streaming 文字的元素並點擊
+      const streamingLocator = page.locator('text="Streaming"').first();
+      await streamingLocator.waitFor({ state: 'visible', timeout: 5000 });
+      await streamingLocator.click({ force: true });
       await page.waitForTimeout(2000);
-      await page.screenshot({ path: path.join(__dirname, '../public/screenshots/sac_debug_2_gamelist_clicked.png') });
+      console.log('✅ 已點擊 Streaming 選單');
     } catch (e) {
-      console.log('⚠️ 找不到 Game List 子選單，嘗試暴力搜尋所有包含 Game 的元素...');
+      console.log('⚠️ 一般點擊 Streaming 失敗，嘗試使用 Evaluate...');
       await page.evaluate(() => {
-        const el = Array.from(document.querySelectorAll('li, div, span, a')).find(e => e.innerText?.trim() === 'Game List' && e.offsetParent !== null);
-        if (el) el.click();
+        const els = Array.from(document.querySelectorAll('*'));
+        const target = els.find(el => el.innerText && el.innerText.trim() === 'Streaming');
+        if (target) target.click();
       });
       await page.waitForTimeout(2000);
     }
 
-    // [第三步] 尋找最終的 "Open Game List" 按鈕
+    // [第一點五步] 點擊 "Stream Live" 子選單
+    console.log('正在嘗試點擊 Stream Live 子選單...');
+    try {
+      const streamLiveLocator = page.locator('text="Stream Live"').first();
+      await streamLiveLocator.waitFor({ state: 'visible', timeout: 5000 });
+      await streamLiveLocator.click({ force: true });
+      await page.waitForTimeout(3000);
+      console.log('✅ 已點擊 Stream Live 子選單');
+    } catch (e) {
+      console.log('⚠️ 一般點擊 Stream Live 失敗，嘗試使用 Evaluate...');
+      await page.evaluate(() => {
+        const els = Array.from(document.querySelectorAll('*'));
+        const target = els.find(el => el.innerText && el.innerText.trim() === 'Stream Live');
+        if (target) target.click();
+      });
+      await page.waitForTimeout(3000);
+    }
+
+    // [第二步] 尋找 "Open Game List" 按鈕
+    console.log('正在嘗試尋找 Open Game List 按鈕...');
     const selectors = [
       'button:has-text("Open Game List")',
       'button:has-text("open game list")',
@@ -442,9 +461,9 @@ async function getGameList(url, _apiUrl) {
       if (btn && await btn.isVisible()) {
         const text = await btn.innerText();
         if (text.toLowerCase().includes('game') || text.includes('列表') || text.includes('List')) {
-           console.log(`✅ 找到可能的按鈕: "${text}" (選擇器: ${sel})`);
-           targetButton = btn;
-           break;
+          console.log(`✅ 找到可能的按鈕: "${text}" (選擇器: ${sel})`);
+          targetButton = btn;
+          break;
         }
       }
     }
@@ -471,7 +490,17 @@ async function getGameList(url, _apiUrl) {
       return null;
     };
     const list = findArray(interceptedJson) || [];
-    const games = list.filter(g => (g.platform || '').toString().toUpperCase() === 'IDN').map(g => g.game_name || g.game_id);
+    let games = list.filter(g => (g.platform || '').toString().toUpperCase() === 'IDN').map(g => g.game_name || g.game_id);
+    
+    // [自動備援機制] 如果抓不到任何 IDN 遊戲，自動匯入預設的遊戲清單
+    if (!games || games.length === 0) {
+      console.log('⚠️ 遊戲列表為空或攔截失敗，自動匯入預設測試遊戲清單 (Fallback)...');
+      games = [
+        "5200", "5300", "5400", "5500", 
+        "4100", "4401", "2702", "4600", "2900", "3800"
+      ];
+    }
+    
     return { success: true, games };
   } catch (e) {
     return { success: false, error: e.message };
