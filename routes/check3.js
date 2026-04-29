@@ -239,18 +239,29 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
   const diag = new UltimateStabilityManager();
   const results = { url, timestamp: new Date().toISOString(), checks: {} };
   const targetGames = Array.isArray(selectedGames) ? selectedGames : [];
-
-  if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
-  let context;
   try {
-    context = await chromium.launchPersistentContext(userDataDir, {
+    // 1. 修改 userDataDir 的定義 (通常在檔案上方，或函數開頭)
+    // 讓它每次執行都加上時間戳記，避免 SingletonLock
+    const uniqueUserDataDir = path.join(__dirname, '../temp_profiles/sac-' + Date.now());
+
+    if (!fs.existsSync(uniqueUserDataDir)) {
+      fs.mkdirSync(uniqueUserDataDir, { recursive: true });
+    }
+
+    // 2. 修改啟動部分
+    context = await chromium.launchPersistentContext(uniqueUserDataDir, { // 使用唯一的路徑
       headless: false,
       viewport: { width: 1366, height: 768 },
       ignoreHTTPSErrors: true,
       args: [
-        '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
-        '--window-size=1382,897' // 強制外框大小，確保內容區為 1366x768
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu',
+        // --- 這裡不需要再加 --user-data-dir 了，因為上面第一個參數已經給了 ---
       ]
     });
 
@@ -272,12 +283,28 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
     diag.logStep('LOGIN_TEST');
 
     // 檢查是否需要登入
+    // --- 修正後的邏輯：先等它出現，再判斷要不要登入 ---
     let loginRes;
-    if (await page.isVisible('input[name="account"]')) {
+    try {
+      console.log('<<<<<<<< [DIAG] 等待登入欄位出現 (最多等 10 秒) >>>>>>>>');
+      // 使用 waitForSelector，它會一直等到元素出現或超時
+      await page.waitForSelector('input[name="account"]', { state: 'visible', timeout: 10000 });
+
+      console.log('<<<<<<<< [CRITICAL] 偵測到登入欄位，開始執行 steps.checkLogin >>>>>>>>');
       loginRes = await steps.checkLogin(page, results.timestamp);
-    } else {
-      loginRes = { success: true, message: 'Session 有效', account: '自動登入' };
+
+    } catch (e) {
+      // 如果 10 秒都沒看到登入框，檢查是否因為已經在後台了
+      const isDashboard = await page.isVisible('.ant-layout-sider, text=Open Game List');
+      if (isDashboard) {
+        console.log('<<<<<<<< [CRITICAL] 沒看到登入欄位，但偵測到後台介面，跳過登入 >>>>>>>>');
+        loginRes = { success: true, message: 'Session 有效', account: '自動登入' };
+      } else {
+        console.log('<<<<<<<< [ERROR] 既沒看到登入框也沒進到後台，畫面可能卡住了 >>>>>>>>');
+        loginRes = { success: false, error: '頁面載入異常，找不到登入欄位' };
+      }
     }
+    // 更新 UI 狀態
     updateStepResult('login', loginRes);
     await diag.takeStepScreenshot(page, 'step1-login', loginRes.success ? 'success' : 'fail');
     if (!loginRes.success) throw new Error(loginRes.error);
@@ -290,20 +317,27 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
     await diag.takeStepScreenshot(page, 'step2-list', listRes.success ? 'success' : 'fail');
     if (!listRes.success) throw new Error(listRes.error);
 
-    // 3. 尋找並開啟遊戲
-    setCurrentStep('launchGame');
-    diag.logStep('LAUNCH_GAME');
-    const launchRes = await steps.launchGame(page, context, targetGames[0]);
+    // --- 修改後的 323 行起 ---
+    // 使用 Promise.all 同時執行「等待新頁面」和「點擊遊戲」
+    const [gamePage, launchRes] = await Promise.all([
+      context.waitForEvent('page', { timeout: 30000 }), // 1. 準備好網子捕捉新視窗
+      steps.launchGame(page, context, targetGames[0])  // 2. 執行點擊動作
+    ]);
+
     updateStepResult('launchGame', launchRes);
     await diag.takeStepScreenshot(page, 'step3-launch', launchRes.success ? 'success' : 'fail');
+
     if (!launchRes.success) throw new Error(launchRes.error);
-    diag.activeGamePage = launchRes.gamePage;
+
+    // 將捕捉到的新分頁 (gamePage) 存入 diag，讓後面的步驟可以用它
+    diag.activeGamePage = gamePage;
+    // --- 修改結束 ---
 
     // 4. 載入遊戲穩定性檢查
     setCurrentStep('checkGameLoad');
     diag.logStep('WAITING_FOR_GAME_LOAD');
-    const loadRes = await steps.checkGameLoad(diag);
-    updateStepResult('checkGameLoad', loadRes);
+    const loadRes = await steps.checkGameLoad(gamePage);
+    await updateStepResult('waitingForGameLoad', loadRes);
 
     // [新增] 案發現場實測日誌
     if (diag.activeGamePage && !diag.activeGamePage.isClosed()) {
@@ -351,16 +385,28 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
     setCurrentStep(null);
 
     // 詢問使用者是否繼續
-    const decision = await askToContinue();
+    // const decision = await askToContinue();
+    // 檢查是否在 Docker 或是非交互環境中
+    // 353 行附近
+    let decision = 'continue'; // 先宣告
 
+    const isInteractive = process.stdout.isTTY;
+    if (isInteractive) {
+      decision = await askToContinue();
+    } else {
+      console.log("偵測到非交互環境，自動執行下一步...");
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+
+    // 367 行附近
     if (decision === 'quit') {
       if (context) await context.close().catch(() => { });
-      console.log('Browser closed immediately');
+      return;
     } else {
-      console.log('💡 瀏覽器將保持開啟 60 秒後自動關閉...');
+      // 在 Docker 裡，讓瀏覽器停 60 秒，方便你在 VNC 觀看結果
+      console.log('💡 測試完成，瀏覽器將保持開啟 60 秒後自動關閉...');
       await new Promise(r => setTimeout(r, 60000));
       if (context) await context.close().catch(() => { });
-      console.log('Browser closed');
     }
 
   } catch (error) {
@@ -491,16 +537,16 @@ async function getGameList(url, _apiUrl) {
     };
     const list = findArray(interceptedJson) || [];
     let games = list.filter(g => (g.platform || '').toString().toUpperCase() === 'IDN').map(g => g.game_name || g.game_id);
-    
+
     // [自動備援機制] 如果抓不到任何 IDN 遊戲，自動匯入預設的遊戲清單
     if (!games || games.length === 0) {
       console.log('⚠️ 遊戲列表為空或攔截失敗，自動匯入預設測試遊戲清單 (Fallback)...');
       games = [
-        "5200", "5300", "5400", "5500", 
+        "5200", "5300", "5400", "5500",
         "4100", "4401", "2702", "4600", "2900", "3800"
       ];
     }
-    
+
     return { success: true, games };
   } catch (e) {
     return { success: false, error: e.message };

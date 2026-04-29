@@ -14,8 +14,8 @@ function setCurrentStep2(stepKey) { currentStep2 = stepKey; }
 function updateStepResult2(stepKey, result) { stepResults2[stepKey] = result; }
 function getProgress2() { return { currentStep: currentStep2, stepResults: stepResults2, totalSteps: totalSteps2 }; }
 function resetProgress2() {
-  currentStep2 = null;
-  Object.keys(stepResults2).forEach(key => delete stepResults2[key]);
+    currentStep2 = null;
+    Object.keys(stepResults2).forEach(key => delete stepResults2[key]);
 }
 
 /**
@@ -25,7 +25,7 @@ function generateRandomNickname() {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     let result = 'sns';
     // 隨機決定長度為 4 或 5
-    const length = Math.floor(Math.random() * 2) + 4; 
+    const length = Math.floor(Math.random() * 2) + 4;
     for (let i = 0; i < length; i++) {
         result += chars.charAt(Math.floor(Math.random() * chars.length));
     }
@@ -38,7 +38,7 @@ function generateRandomNickname() {
  */
 async function dismissTranslateBar(page) {
     const viewport = page.viewportSize() || { width: 1280, height: 720 };
-    
+
     // 嘗試點擊翻譯列右側的「X」關閉按鈕（固定在右上角）
     const x_btn = await page.evaluate(() => {
         // 尋找 role="button" 或有 title/aria-label 含 close 的按鈕
@@ -52,7 +52,7 @@ async function dismissTranslateBar(page) {
         if (closeBtn) {
             const r = closeBtn.getBoundingClientRect();
             closeBtn.click();
-            return { x: r.x + r.width/2, y: r.y + r.height/2 };
+            return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
         }
         return null;
     });
@@ -66,25 +66,25 @@ async function dismissTranslateBar(page) {
         console.log(`[Translate Killer] No X found. Bombing coordinates around (${base_x}, ${base_y})...`);
         for (let dx = -10; dx <= 10; dx += 10) {
             for (let dy = -10; dy <= 10; dy += 10) {
-                await page.mouse.click(base_x + dx, base_y + dy).catch(() => {});
+                await page.mouse.click(base_x + dx, base_y + dy).catch(() => { });
             }
         }
     }
-    
+
     // 額外嘗試：點擊可能存在的 Menu 旁的 X (針對 Chrome 泡泡)
     await page.waitForTimeout(500);
-    
+
     // 強制隱藏所有可疑橫條與泡泡
     await page.evaluate(() => {
         const selectors = [
-            '.yt-translate-bar', '#google-translate-element', '.goog-te-banner-frame', 
+            '.yt-translate-bar', '#google-translate-element', '.goog-te-banner-frame',
             '[class*="translate"] iframe', '#goog-gt-tt', '.goog-te-balloon-frame',
             '#translate-button', '.translate-bubble'
         ];
         selectors.forEach(s => {
             document.querySelectorAll(s).forEach(el => el.style.display = 'none');
         });
-        
+
         // 清除推擠版面的 margin
         document.documentElement.style.marginTop = '0px';
         document.body.style.marginTop = '0px';
@@ -108,12 +108,12 @@ async function smartClick(handle, textRegex, description = 'Element') {
                 const box = await el.boundingBox();
                 if (box && box.width > 5 && box.height > 5) {
                     await handle.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { delay: 100 });
-                    console.log(`[Diagnostic] SUCCESS: Clicked ${description} at (${(box.x + box.width/2).toFixed(0)}, ${(box.y + box.height/2).toFixed(0)}) via Native Mouse`);
+                    console.log(`[Diagnostic] SUCCESS: Clicked ${description} at (${(box.x + box.width / 2).toFixed(0)}, ${(box.y + box.height / 2).toFixed(0)}) via Native Mouse`);
                     return true;
                 }
             }
         }
-    } catch (e) {}
+    } catch (e) { }
 
     // JS 備案
     const jsClicked = await handle.evaluate(({ pattern, flags }) => {
@@ -146,13 +146,22 @@ async function checkWebsite2(url) {
     const browser = await chromium.launch({
         headless: false,
         args: [
-            '--disable-translate',
-            '--disable-features=Translate,TranslateLanguageDetection,TranslateLanguageDetectionInternal,IPH_TranslateMenuButton',
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
             '--no-first-run',
-            '--no-default-browser-check',
-            '--lang=en-US',
-            '--disable-blink-features=AutomationControlled',
-            '--window-position=0,0'
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu',
+            // --- 加入下面這一行，強制每次都用新的身份 ---
+            '--user-data-dir=/tmp/chrome-user-data-' + Date.now()
+            //, '--disable-translate',
+            // '--disable-features=Translate,TranslateLanguageDetection,TranslateLanguageDetectionInternal,IPH_TranslateMenuButton',
+            // '--no-first-run',
+            // '--no-default-browser-check',
+            // '--lang=en-US',
+            // '--disable-blink-features=AutomationControlled',
+            // '--window-position=0,0'
         ]
     });
 
@@ -170,17 +179,17 @@ async function checkWebsite2(url) {
         console.log('[Step 1] Initializing page:', url);
         await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
         await page.waitForTimeout(3000);
-        
+
         // 擊殺翻譯列
         await dismissTranslateBar(page);
-        
+
         const gVersion = await page.evaluate(() => window.gVersion || 'unknown');
         updateStepResult2('versionCheck', { success: true, value: gVersion });
 
         // 2️⃣ Nickname Dialog
         setCurrentStep2('nicknameDialog');
         console.log('[Step 2] Handling initial nickname...');
-        
+
         // 依照需求：在點擊暱稱視窗前再次精準擊殺翻譯列
         console.log('[Step 2] Final Translate Killing before Nickname OK...');
         await dismissTranslateBar(page);
@@ -190,7 +199,7 @@ async function checkWebsite2(url) {
         for (let i = 0; i < 6; i++) {
             const ok = await smartClick(page, /Confirm|確認|OK/i, 'Nickname OK');
             await page.waitForTimeout(2000);
-            
+
             // 驗證視窗是否真的消失 (檢查是否還有 visible 的 OK 按鈕或特定的 modal 背景)
             const stillExists = await page.evaluate(() => {
                 const els = Array.from(document.querySelectorAll('button, div, span, p'));
@@ -200,12 +209,12 @@ async function checkWebsite2(url) {
                     return (/Confirm|確認|OK/i.test(txt) && isVisible && txt.length < 10);
                 });
             });
-            
+
             if (!stillExists) {
                 nicknameConfirmed = true;
                 break;
             }
-            console.log(`[Step 2] Nickname dialog still visible (retry ${i+1}), retrying click...`);
+            console.log(`[Step 2] Nickname dialog still visible (retry ${i + 1}), retrying click...`);
             await dismissTranslateBar(page);
             await page.waitForTimeout(1000);
         }
@@ -244,7 +253,7 @@ async function checkWebsite2(url) {
         // 4️⃣ Change Nickname
         setCurrentStep2('tcNicknameChange');
         console.log('[Step 4] Changing nickname...');
-        
+
         // 點擊大頭貼前再次確保翻譯泡泡消失
         await dismissTranslateBar(page);
         await page.waitForTimeout(1000);
@@ -253,7 +262,7 @@ async function checkWebsite2(url) {
 
         // 嘗試多種方式點擊右上角的大頭貼或暱稱開啟視窗
         let iconClicked = false;
-        
+
         // 方法 A: 透過 CSS 選擇器
         try {
             const icon = page.locator('.header-user-info, .nickname-icon, .user-name, [class*="Nickname"], .user-info').first();
@@ -262,7 +271,7 @@ async function checkWebsite2(url) {
                 iconClicked = true;
                 console.log('[Step 4] Clicked Profile Icon via CSS selector.');
             }
-        } catch (e) {}
+        } catch (e) { }
 
         // 方法 B: 掃描右上角區域 (Top-Right Quadrant)
         if (!iconClicked) {
@@ -274,11 +283,11 @@ async function checkWebsite2(url) {
                         const r = el.getBoundingClientRect();
                         return r.top < 70 && r.left > width * 0.6 && r.width > 20 && r.height > 20;
                     });
-                
+
                 // 優先找看起來像暱稱 (包含 sns) 或有點擊屬性的
-                const target = candidates.find(el => (el.innerText || '').includes('sns')) || 
-                               candidates.find(el => window.getComputedStyle(el).cursor === 'pointer');
-                
+                const target = candidates.find(el => (el.innerText || '').includes('sns')) ||
+                    candidates.find(el => window.getComputedStyle(el).cursor === 'pointer');
+
                 if (target) {
                     target.click();
                     return true;
@@ -299,10 +308,10 @@ async function checkWebsite2(url) {
 
         let newName = generateRandomNickname();
         const inputLocator = page.locator('input[type="text"], input[placeholder*="nickname" i]').first();
-        
+
         if (await inputLocator.isVisible({ timeout: 2000 }).catch(() => false)) {
             console.log(`[Step 4] Dialog opened. Initial name choice: ${newName}`);
-            
+
             for (let i = 0; i < 15; i++) {
                 // 輸入暱稱
                 await inputLocator.click();
@@ -312,7 +321,7 @@ async function checkWebsite2(url) {
                 await page.waitForTimeout(1000);
 
                 // 點擊確認
-                console.log(`[Step 4] Attempting to set nickname: ${newName} (Try ${i+1})`);
+                console.log(`[Step 4] Attempting to set nickname: ${newName} (Try ${i + 1})`);
                 await page.keyboard.press('Enter');
                 await smartClick(page, /Confirm|Save|確認|儲存|SAVE/i, 'Nick Confirm');
                 await page.waitForTimeout(2000);
@@ -358,7 +367,7 @@ async function checkWebsite2(url) {
         console.log(`[Step 4] Result: ${success ? 'PASS' : 'FAIL'} ("${newName}")`);
         updateStepResult2('tcNicknameChange', { success, newName });
 
-        await page.keyboard.press('Escape').catch(() => {});
+        await page.keyboard.press('Escape').catch(() => { });
         await smartClick(page, /Confirm|Cancel|Close|確認|關閉|CLOSE/i, 'Setting Close');
 
         // 5️⃣ Manual Interaction
@@ -370,7 +379,7 @@ async function checkWebsite2(url) {
         await newPage.waitForLoadState('domcontentloaded', { timeout: 90000 });
         updateStepResult2('manualInteraction', { success: true });
         console.log('[Step 5] Room page loaded!');
-        
+
         // 🚀 新增：進入直播間後等待 10 秒，確保遊戲與彈窗完整載入
         console.log('[系統] 正在等待直播間頁面完整載入 (10秒)...');
         await newPage.waitForTimeout(10000);
@@ -395,9 +404,9 @@ async function checkWebsite2(url) {
         setCurrentStep2('howToPlayPopup');
         console.log('[Step 7] Handling How to Play popups...');
         await newPage.waitForTimeout(1000);
-        
+
         // 【關鍵】先關閉直播間頁面的翻譯列
-        await dismissTranslateBar(newPage).catch(() => {});
+        await dismissTranslateBar(newPage).catch(() => { });
         await newPage.waitForTimeout(1000);
 
         const vp = newPage.viewportSize() || { width: 1280, height: 720 };
@@ -416,15 +425,15 @@ async function checkWebsite2(url) {
                                 const cb = target.querySelector('input[type="checkbox"]') || target.parentElement.querySelector('input[type="checkbox"]');
                                 if (cb) cb.click(); else target.click();
                             }
-                        }).catch(() => {});
+                        }).catch(() => { });
                         await targetPage.waitForTimeout(500);
                         const clicked = await smartClick(frame, /START PLAYING|START|PLAY/i, 'Start Button');
                         if (clicked) return true;
-                        
+
                         const btnPos = await frame.evaluate(() => {
                             const btns = Array.from(document.querySelectorAll('button, div[role="button"], .startButton'));
                             const bigBtn = btns.find(b => b.offsetWidth > 100 && b.offsetHeight > 30);
-                            if (bigBtn) { const r = bigBtn.getBoundingClientRect(); return { x: r.left + r.width/2, y: r.top + r.height/2 }; }
+                            if (bigBtn) { const r = bigBtn.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }
                             return null;
                         }).catch(() => null);
                         if (btnPos) {
@@ -438,7 +447,7 @@ async function checkWebsite2(url) {
                             return true;
                         }
                     }
-                } catch (e) {}
+                } catch (e) { }
             }
             return false;
         };
@@ -470,17 +479,17 @@ async function checkWebsite2(url) {
         console.log('[Diagnostic] TEST COMPLETED.');
     } finally {
         setCurrentStep2(null);
-        
+
         // 詢問使用者是否繼續
         const decision = await askToContinue();
-        
+
         if (decision === 'quit') {
-            await browser.close().catch(() => {});
+            await browser.close().catch(() => { });
             console.log('Browser closed immediately');
         } else {
             console.log('💡 瀏覽器將保持開啟 60 秒後自動關閉...');
-            await page.waitForTimeout(60000).catch(() => {});
-            await browser.close().catch(() => {});
+            await page.waitForTimeout(60000).catch(() => { });
+            await browser.close().catch(() => { });
         }
     }
 }

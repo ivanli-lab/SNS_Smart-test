@@ -32,12 +32,23 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
   let browser = null;
   try {
     resetProgress();
-    browser = await chromium.launch({ headless: false, args: ['--no-sandbox', '--disable-translate'] });
+    browser = await chromium.launch({
+      headless: false, args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu',
+        '--user-data-dir=/tmp/chrome-user-data-' + Date.now()
+      ]
+    });
     const context = await browser.newContext({ viewport });
     const page = await context.newPage();
     setupNetworkLogging(page);
 
-    await page.goto(url, { waitUntil: 'networkidle' }).catch(() => {});
+    await page.goto(url, { waitUntil: 'networkidle' }).catch(() => { });
 
     // 1️⃣ 彈窗檢查
     setCurrentStep('streamNSpinDialog');
@@ -55,7 +66,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
   } finally {
     if (browser) {
       const decision = await askToContinue();
-      if (decision === 'quit') await browser.close().catch(() => {});
+      if (decision === 'quit') await browser.close().catch(() => { });
     }
   }
 }
@@ -67,7 +78,7 @@ async function startMainFlow(context, page) {
 
   const newPage = await context.waitForEvent('page', { timeout: 120000 });
   updateStepResult('streamingNowClick', { success: true, message: '進入直播間，開始強力監控載入進度...' });
-  
+
   // 🟢 搶先攔截 WebSocket
   let socketData = null;
   newPage.on('websocket', ws => {
@@ -78,7 +89,7 @@ async function startMainFlow(context, page) {
 
   // 🛡️ [強力載入防禦層] 🛡️
   console.log('[系統] 正在監控所有 Iframe 的載入進度...');
-  
+
   // 1. 強制等待 8 秒 (基礎開門時間)
   await newPage.waitForTimeout(8000);
 
@@ -89,12 +100,12 @@ async function startMainFlow(context, page) {
       const text = (doc.body ? doc.body.innerText : '').toUpperCase();
       // 如果有任何 Loading 字樣或 % 符號，代表還在載入
       if (text.includes('LOADING') || text.includes('%')) return false;
-      
+
       // 檢查子框架
       for (let i = 0; i < win.frames.length; i++) {
         if (!checkFrames(win.frames[i])) return false;
       }
-      
+
       // 同時確認是否已經出現了遊戲核心元素 (如 Balance)
       return text.includes('BALANCE') || text.includes('RP') || text.includes('BET');
     };
@@ -110,23 +121,23 @@ async function startMainFlow(context, page) {
     setCurrentStep(id);
     const res = await fn().catch(e => ({ success: false, message: e.message }));
     updateStepResult(id, res);
-    await newPage.waitForTimeout(1500); 
+    await newPage.waitForTimeout(1500);
   };
 
   // 3. WebSocket 驗證
   await runStep('socketJoinData', '驗證 WebSocket', async () => {
     if (socketData) return { success: true };
     // 如果還沒抓到，再給最後 10 秒機會
-    for(let i=0; i<10; i++) {
-        if(socketData) return { success: true };
-        await newPage.waitForTimeout(1000);
+    for (let i = 0; i < 10; i++) {
+      if (socketData) return { success: true };
+      await newPage.waitForTimeout(1000);
     }
     return { success: false, message: '未擷取到 Join 指令' };
   });
 
   // 4. 版本號
   await runStep('gVersion', '版本號', async () => ({
-    success: true, 
+    success: true,
     message: `版本: ${await newPage.evaluate(() => window.gVersion || 'N/A')}`
   }));
 

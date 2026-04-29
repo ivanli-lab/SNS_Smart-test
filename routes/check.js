@@ -39,7 +39,7 @@ async function takeStepScreenshot(page, stepName, status) {
     if (!page || page.isClosed()) return;
     // [優化] 僅在失敗時截圖，減輕系統負擔
     if (status !== 'fail' && stepName !== 'step0-nav') return;
-    
+
     const filename = `${stepName}-${status}-${Date.now()}.png`;
     const filepath = path.join(screenshotDir, filename);
     await page.screenshot({ path: filepath });
@@ -72,10 +72,22 @@ function resetProgress() {
 }
 
 async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
-  const browser = await chromium.launch({ headless: false });
+  const browser = await chromium.launch({
+    headless: false, args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process',
+      '--disable-gpu',
+      // --- 加入下面這一行，強制每次都用新的身份 ---
+      '--user-data-dir=/tmp/chrome-user-data-' + Date.now()
+    ]
+  });
   const context = await browser.newContext({ viewport });
   const page = await context.newPage();
-  
+
   // --- 全域變數與 API 攔截器狀態 ---
   let globalRankingData = null;
   let isRankingInterceptorActive = false; // 預設關閉，第 9 點才開啟
@@ -88,7 +100,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
         const text = await response.text();
         const decoded = Buffer.from(text, 'base64').toString();
         const json = JSON.parse(decoded);
-        
+
         const findRanking = (obj) => {
           if (!obj || typeof obj !== 'object') return null;
           // 精準識別：檢查 command 1021
@@ -173,19 +185,19 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
     setCurrentStep('renameFunction');
     try {
       results.checks.renameFunction = await checkRenameFunction(page, timestamp);
-      const isRenameSuccess = results.checks.renameFunction.confirmButtonClicked || 
-                             results.checks.renameFunction.confirmClicked;
-      updateStepResult('renameFunction', { 
+      const isRenameSuccess = results.checks.renameFunction.confirmButtonClicked ||
+        results.checks.renameFunction.confirmClicked;
+      updateStepResult('renameFunction', {
         ...results.checks.renameFunction,
         success: isRenameSuccess
       });
       await takeStepScreenshot(page, 'step3-rename', isRenameSuccess ? 'success' : 'fail');
       console.log('3️⃣ 更名功能測試:', JSON.stringify(results.checks.renameFunction));
     } catch (err) {
-      results.checks.renameFunction = { 
-        clicked: false, 
+      results.checks.renameFunction = {
+        clicked: false,
         confirmButtonClicked: false,
-        error: String(err && err.message || err) 
+        error: String(err && err.message || err)
       };
       updateStepResult('renameFunction', { success: false, error: results.checks.renameFunction.error });
       await takeStepScreenshot(page, 'step3-rename', 'fail');
@@ -264,7 +276,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
       // 在點擊前開啟排行榜攔截器
       isRankingInterceptorActive = true;
       console.log('📡 [System] 已啟動 GS 1021 排行榜攔截器');
-      
+
       results.checks.streamerCardClick = await checkStreamerCardClick(page, timestamp);
       updateStepResult('streamerCardClick', results.checks.streamerCardClick);
       await takeStepScreenshot(page, 'step9-cardClick', results.checks.streamerCardClick.success ? 'success' : 'fail');
@@ -332,17 +344,17 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
     results.stack = error && error.stack ? error.stack : undefined;
   } finally {
     setCurrentStep(null);
-    
+
     // 詢問使用者是否繼續
     const decision = await askToContinue();
-    
+
     if (decision === 'quit') {
-      await browser.close().catch(() => {});
+      await browser.close().catch(() => { });
       console.log('Browser closed immediately');
     } else {
       console.log('💡 瀏覽器將保持開啟 60 秒後自動關閉...');
-      await page.waitForTimeout(60000).catch(() => {});
-      await browser.close().catch(() => {});
+      await page.waitForTimeout(60000).catch(() => { });
+      await browser.close().catch(() => { });
       console.log('Browser closed');
     }
   }
