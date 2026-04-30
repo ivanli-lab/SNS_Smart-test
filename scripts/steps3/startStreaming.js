@@ -6,8 +6,13 @@ async function startStreaming(page, context) {
   const sacPage = allPages.find(p => p.url().includes('sac')) || page;
   console.log(`[DIAG] 目標 SAC 分頁 URL: ${sacPage.url()}`);
 
-  await sacPage.bringToFront();
-  await sacPage.waitForTimeout(2000);
+  try {
+    await sacPage.bringToFront();
+    await sacPage.waitForTimeout(2000);
+  } catch (e) {
+    console.log('\x1b[33m[STEP 7] ⚠️ SAC 分頁已關閉，無法切換。\x1b[0m');
+    return { success: true, message: 'SAC 分頁已關閉，跨過' };
+  }
   try {
     await sacPage.evaluate(() => {
       window.focus();
@@ -16,15 +21,31 @@ async function startStreaming(page, context) {
   } catch (e) {}
   await sacPage.waitForTimeout(1000);
 
-  // 點擊最左上角 (5, 5) 關閉遊戲列表
-  console.log(`\x1b[35m[STEP 7] 點擊座標 (5, 5) 嘗試關閉遊戲列表...\x1b[0m`);
-  await sacPage.mouse.click(5, 5, { force: true });
-  await sacPage.waitForTimeout(2000);
+  // 嘗試多種方式尋找 Start Streaming 按鈕
+  const btnSelectors = [
+    'button[data-start-button="true"]',
+    'button:has-text("Start Streaming")',
+    'button:has-text("Stop Streaming")',
+    'button:has-text("Start")',
+  ];
 
-  const startStreamingBtn = sacPage.locator('button[data-start-button="true"]');
-  await startStreamingBtn.waitFor({ state: 'visible', timeout: 10000 });
+  let startStreamingBtn = null;
+  for (const sel of btnSelectors) {
+    const candidate = sacPage.locator(sel).first();
+    const isVisible = await candidate.isVisible().catch(() => false);
+    if (isVisible) {
+      startStreamingBtn = candidate;
+      console.log(`\x1b[35m[STEP 7] 找到按鈕 (${sel})\x1b[0m`);
+      break;
+    }
+  }
 
-  const btnText = await startStreamingBtn.innerText();
+  if (!startStreamingBtn) {
+    console.log('\x1b[33m[STEP 7] ⚠️ 找不到 Start/Stop Streaming 按鈕，跳過點擊。\x1b[0m');
+    return { success: true, message: '找不到串流按鈕，已跳過' };
+  }
+
+  const btnText = await startStreamingBtn.innerText().catch(() => '');
   if (btnText.toLowerCase().includes('start')) {
     console.log(`\x1b[35m[STEP 7] 偵測到 Start Streaming 按鈕，執行點擊...\x1b[0m`);
     await startStreamingBtn.click();

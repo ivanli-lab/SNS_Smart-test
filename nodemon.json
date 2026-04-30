@@ -1,1 +1,10 @@
-{"ignore": ["user_data", "logs", "public/screenshots"]}
+{
+  "ignore": [
+    "temp_profiles",
+    "temp_profiles/*",
+    "user_data",
+    "public/screenshots",
+    "logs",
+    "node_modules"
+  ]
+}

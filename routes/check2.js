@@ -40,8 +40,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
         '--no-first-run',
         '--no-zygote',
         '--single-process',
-        '--disable-gpu',
-        '--user-data-dir=/tmp/chrome-user-data-' + Date.now()
+        '--disable-gpu'
       ]
     });
     const context = await browser.newContext({ viewport });

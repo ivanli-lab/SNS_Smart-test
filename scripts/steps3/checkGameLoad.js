@@ -7,7 +7,7 @@ async function checkGameLoad(gamePage) {
     console.log(`--- [DIAG] 遊戲網址已確認跳轉: ${gamePage.url()} ---`);
 
     // 2. 等待頁面穩定
-    await gamePage.waitForLoadState('networkidle');
+    await gamePage.waitForTimeout(2000);
 
     // 3. 【關鍵驗證】搜尋遊戲核心元素
     // 大多數遊戲後台是用 <canvas> 繪圖，或者是包在 <iframe> 裡

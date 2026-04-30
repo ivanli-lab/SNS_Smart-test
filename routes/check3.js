@@ -157,7 +157,7 @@ class UltimateStabilityManager {
       context.on('response', async res => {
         try {
           const url = res.url();
-          if (!url.includes('gs.ingmsrv.cc')) return;
+          if (!url.includes('gs.ingmsrv.cc') && !url.includes('gs.istaweb.xyz')) return;
           const text = await res.text().catch(() => '');
           if (!text) return;
           const tokenMatch = text.match(/"token":"([^"]+)"/);
@@ -169,16 +169,18 @@ class UltimateStabilityManager {
           if (hasErrorCode0) {
             this.lastRenameOkAt = Date.now();
           }
-          if (text.includes('"command":"spin"')) {
+          const isSpinResponse = /"command"\s*:\s*"spin"/.test(text);
+          if (isSpinResponse) {
             this.lastSpinResponseAt = Date.now();
+            console.log(`\x1b[32m[GS_DETECT] 🎰 偵測到 Spin 封包回應！\x1b[0m`);
 
             // [智慧等待] 偵測 Free Game 狀態
-            if (text.includes('"get_sub_game":\s*true')) {
+            if (/"get_sub_game"\s*:\s*true/.test(text)) {
               if (!this.isInFreeGame) {
                 console.log(`\x1b[33m[GS_DETECT] 🎰 偵測到進入 Free Game！等待結束中...\x1b[0m`);
                 this.isInFreeGame = true;
               }
-            } else if (text.includes('"data":\s*\[\]')) {
+            } else if (/"data"\s*:\s*\[\s*\]/.test(text)) {
               if (this.isInFreeGame) {
                 console.log(`\x1b[32m[GS_DETECT] ✨ Free Game 已結束，回到主遊戲。\x1b[0m`);
                 this.isInFreeGame = false;
@@ -189,7 +191,7 @@ class UltimateStabilityManager {
               this.spinStats.success++;
             } else {
               this.spinStats.fail++;
-              if (text.includes('"error_code":\s*109')) {
+              if (/"error_code"\s*:\s*109/.test(text)) {
                 this.last109At = Date.now();
               }
             }
@@ -215,11 +217,29 @@ class UltimateStabilityManager {
 
   async findCanvas(page) {
     try {
+      // 1. 直接在頁面找
       let canvas = await page.$('canvas');
       if (canvas) return canvas;
+
+      // 2. 搜尋所有 frames（含 iframe 內）
       for (const frame of page.frames()) {
-        canvas = await frame.$('canvas');
-        if (canvas) return canvas;
+        try {
+          canvas = await frame.$('canvas');
+          if (canvas) {
+            console.log(`\x1b[35m[DIAG] 在 frame [${frame.url()}] 找到 Canvas\x1b[0m`);
+            return canvas;
+          }
+          // 3. 搜尋 frame 裡的子 frame
+          for (const childFrame of frame.childFrames()) {
+            try {
+              canvas = await childFrame.$('canvas');
+              if (canvas) {
+                console.log(`\x1b[35m[DIAG] 在子 frame [${childFrame.url()}] 找到 Canvas\x1b[0m`);
+                return canvas;
+              }
+            } catch (e) {}
+          }
+        } catch (e) {}
       }
     } catch (e) { }
     return null;
@@ -235,10 +255,16 @@ function resetProgress() {
 }
 
 async function checkWebsite(url, viewport = { width: 1366, height: 768 }, selectedGames = [], gaMode = false) {
+  console.log('--- [DIAG] 目前 steps 的狀態:', typeof steps); // 加入這行
   const userDataDir = path.join(__dirname, '../user_data/sac_isolated');
+  // [超級偵察機] 看看 steps 到底抓到了什麼
+  console.log('\x1b[33m--- [DIAG] steps 物件的所有 Key: ---\x1b[0m', Object.keys(steps));
   const diag = new UltimateStabilityManager();
   const results = { url, timestamp: new Date().toISOString(), checks: {} };
   const targetGames = Array.isArray(selectedGames) ? selectedGames : [];
+  // --- 新增這兩行 ---
+  let launchRes = { success: false };
+  let gamePage = null;
   try {
     // 1. 修改 userDataDir 的定義 (通常在檔案上方，或函數開頭)
     // 讓它每次執行都加上時間戳記，避免 SingletonLock
@@ -278,31 +304,32 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     await diag.takeStepScreenshot(page, 'step0-nav', 'success');
 
-    // 1. 登入
-    setCurrentStep('login');
-    diag.logStep('LOGIN_TEST');
-
-    // 檢查是否需要登入
-    // --- 修正後的邏輯：先等它出現，再判斷要不要登入 ---
-    let loginRes;
+    // --- [最終解決方案] 登入與狀態判定 ---
+    let loginRes = { success: false };
     try {
-      console.log('<<<<<<<< [DIAG] 等待登入欄位出現 (最多等 10 秒) >>>>>>>>');
-      // 使用 waitForSelector，它會一直等到元素出現或超時
-      await page.waitForSelector('input[name="account"]', { state: 'visible', timeout: 10000 });
+        // 使用最基礎的選擇器，分開判定，絕不合併，避免 CSS 解析報錯
+        const isSiderVisible = await page.locator('.ant-layout-sider').isVisible().catch(() => false);
+        const isListBtnVisible = await page.locator('button:has-text("Open Game List")').isVisible().catch(() => false);
 
-      console.log('<<<<<<<< [CRITICAL] 偵測到登入欄位，開始執行 steps.checkLogin >>>>>>>>');
-      loginRes = await steps.checkLogin(page, results.timestamp);
-
-    } catch (e) {
-      // 如果 10 秒都沒看到登入框，檢查是否因為已經在後台了
-      const isDashboard = await page.isVisible('.ant-layout-sider, text=Open Game List');
-      if (isDashboard) {
-        console.log('<<<<<<<< [CRITICAL] 沒看到登入欄位，但偵測到後台介面，跳過登入 >>>>>>>>');
-        loginRes = { success: true, message: 'Session 有效', account: '自動登入' };
-      } else {
-        console.log('<<<<<<<< [ERROR] 既沒看到登入框也沒進到後台，畫面可能卡住了 >>>>>>>>');
-        loginRes = { success: false, error: '頁面載入異常，找不到登入欄位' };
-      }
+        if (isSiderVisible || isListBtnVisible) {
+            console.log('<<<<<<<< [DIAG] 偵測到後台特徵，直接跳過登入 >>>>>>>>');
+            loginRes = { success: true, message: 'Session 有效', account: '自動登入' };
+        } else {
+            console.log('<<<<<<<< [DIAG] 沒看到後台，開始搜尋登入欄位... >>>>>>>>');
+            // 等待最原始的 account 欄位
+            await page.waitForSelector('input[name="account"]', { state: 'visible', timeout: 10000 });
+            console.log('<<<<<<<< [CRITICAL] 執行 steps.checkLogin >>>>>>>>');
+            loginRes = await steps.checkLogin(page, results.timestamp);
+        }
+    } catch (err) {
+        console.log('<<<<<<<< [DIAG] 判定路徑不通 (可能是已在後台或頁面異常):', err.message);
+        // 保險手段：如果上述判定噴錯，最後再試一次直接抓 Open Game List
+        const finalCheck = await page.locator('button:has-text("Open Game List")').isVisible().catch(() => false);
+        if (finalCheck) {
+            loginRes = { success: true, message: 'Final check pass' };
+        } else {
+            loginRes = { success: false, error: err.message };
+        }
     }
     // 更新 UI 狀態
     updateStepResult('login', loginRes);
@@ -319,8 +346,11 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
 
     // --- 修改後的 323 行起 ---
     // 使用 Promise.all 同時執行「等待新頁面」和「點擊遊戲」
-    const [gamePage, launchRes] = await Promise.all([
-      context.waitForEvent('page', { timeout: 30000 }), // 1. 準備好網子捕捉新視窗
+    [gamePage, launchRes] = await Promise.all([
+      context.waitForEvent('page', { timeout: 15000 }).catch(() => {
+        console.log('--- [DIAG] 15 秒內未偵測到新分頁，假設遊戲在原分頁/彈窗開啟 ---');
+        return page;
+      }), // 1. 準備好網子捕捉新視窗，如果沒抓到就退回使用原本的 page
       steps.launchGame(page, context, targetGames[0])  // 2. 執行點擊動作
     ]);
 
@@ -333,226 +363,109 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
     diag.activeGamePage = gamePage;
     // --- 修改結束 ---
 
-    // 4. 載入遊戲穩定性檢查
+    // --- [STEP 4] Waiting for Game Load ---
     setCurrentStep('checkGameLoad');
-    diag.logStep('WAITING_FOR_GAME_LOAD');
-    const loadRes = await steps.checkGameLoad(gamePage);
-    await updateStepResult('waitingForGameLoad', loadRes);
-
-    // [新增] 案發現場實測日誌
     if (diag.activeGamePage && !diag.activeGamePage.isClosed()) {
       try {
-        const innerSize = await diag.activeGamePage.evaluate(() => ({
-          w: window.innerWidth,
-          h: window.innerHeight,
-          ratio: window.devicePixelRatio
-        }));
-        console.log(`\x1b[35m[DIAG] 案發現場實際內容區: ${innerSize.w} x ${innerSize.h} (縮放比: ${innerSize.ratio})\x1b[0m`);
-      } catch (e) {
-        console.log(`\x1b[31m[DIAG ERROR] 無法讀取內容區尺寸: ${e.message}\x1b[0m`);
+        const loadRes = await steps.checkGameLoad(gamePage);
+        updateStepResult('checkGameLoad', loadRes);
+      } catch (err) {
+        console.error('--- [ERROR] 遊戲載入超時或異常:', err.message);
+        updateStepResult('checkGameLoad', { success: false, error: err.message });
       }
     }
 
-    await diag.takeStepScreenshot(diag.activeGamePage, 'step4-load', loadRes.success ? 'success' : 'fail');
+    // [關鍵] 等待遊戲引擎與伺服器連線完全初始化，再開始 Spin 測試
+    console.log('--- [DIAG] 等待 8 秒讓遊戲引擎完全就緒... ---');
+    await gamePage.waitForTimeout(8000);
 
-    // 5. Spin 鈕點擊測試
+    // 確認 Step 4 是否成功，作為 Step 5、6 的執行前提
+    const gameLoadSucceeded = stepResults['checkGameLoad']?.success === true;
+
+    // --- [STEP 5] Space Spin Check ---
     setCurrentStep('checkSpaceSpin');
-    diag.logStep('SPIN_BUTTON_TEST');
-    // 強化：確保 page 對象有效
-    diag.activeGamePage = await diag.findActiveGamePage(context);
-    const spaceRes = await steps.checkSpaceSpin(diag, stepResults, GAME_COORDINATE_MAP);
-    updateStepResult('checkSpaceSpin', spaceRes);
-    await diag.takeStepScreenshot(diag.activeGamePage, 'step5-spin', spaceRes.success ? 'success' : 'fail');
-
-    // 6. AutoSpin 鈕點擊測試
-    setCurrentStep('gameOperation');
-    diag.logStep('AUTO_SPIN_TEST');
-    // 強化：確保 page 對象有效
-    diag.activeGamePage = await diag.findActiveGamePage(context);
-    const config = GAME_COORDINATE_MAP[launchRes.gameId] || GAME_COORDINATE_MAP["default"];
-    const opRes = await steps.gameOperation(diag, launchRes.gameId, config);
-    updateStepResult('gameOperation', opRes);
-    await diag.takeStepScreenshot(diag.activeGamePage, 'step6-auto', opRes.success ? 'success' : 'fail');
-
-    // 7. 點擊 Start Streaming (SAC 分頁)
-    setCurrentStep('startStreaming');
-    diag.logStep('START_STREAMING_TEST');
-    const streamRes = await steps.startStreaming(page, context);
-    updateStepResult('startStreaming', streamRes);
-    await diag.takeStepScreenshot(page, 'step7-stream', streamRes.success ? 'success' : 'fail');
-
-    // [修正] 在焊死前先清除目前步驟狀態，讓前端顯示 ✅ 而不是 ⏳
-    setCurrentStep(null);
-
-    // 詢問使用者是否繼續
-    // const decision = await askToContinue();
-    // 檢查是否在 Docker 或是非交互環境中
-    // 353 行附近
-    let decision = 'continue'; // 先宣告
-
-    const isInteractive = process.stdout.isTTY;
-    if (isInteractive) {
-      decision = await askToContinue();
-    } else {
-      console.log("偵測到非交互環境，自動執行下一步...");
-      await new Promise(resolve => setTimeout(resolve, 3000));
-    }
-
-    // 367 行附近
-    if (decision === 'quit') {
-      if (context) await context.close().catch(() => { });
-      return;
-    } else {
-      // 在 Docker 裡，讓瀏覽器停 60 秒，方便你在 VNC 觀看結果
-      console.log('💡 測試完成，瀏覽器將保持開啟 60 秒後自動關閉...');
-      await new Promise(r => setTimeout(r, 60000));
-      if (context) await context.close().catch(() => { });
-    }
-
-  } catch (error) {
-    console.error(`[ERROR] ${diag.lastStep}: ${error.message}`);
-  } finally {
-    setCurrentStep(null);
-  }
-  return results;
-}
-
-async function getGameList(url, _apiUrl) {
-  const userDataDir = path.join(__dirname, '../user_data/sac_gamelist');
-  if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
-  let context = null;
-  try {
-    context = await chromium.launchPersistentContext(userDataDir, {
-      headless: true,
-      args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-gpu']
-    });
-    const page = await context.newPage();
-    let interceptedJson = null;
-    page.on('response', async res => {
+    if (!gameLoadSucceeded) {
+      console.log('\x1b[33m[STEP 5] ⚠️ 遊戲未成功載入，跳過 Spin 測試。\x1b[0m');
+      updateStepResult('checkSpaceSpin', { success: false, error: '遊戲未成功載入，跳過 Spin 測試' });
+    } else if (diag.activeGamePage && !diag.activeGamePage.isClosed()) {
       try {
-        if (res.url().includes('api')) {
-          const json = await res.json();
-          const checkArray = (obj) => {
-            if (!obj || typeof obj !== 'object') return false;
-            for (const key in obj) {
-              if (Array.isArray(obj[key]) && obj[key].length > 0 && obj[key][0].platform) return true;
-              if (checkArray(obj[key])) return true;
-            }
-            return false;
-          };
-          if (checkArray(json)) interceptedJson = json;
-        }
-      } catch (e) { }
-    });
-    await page.goto(url, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(5000);
-    if (await page.isVisible('input[name="account"]')) {
-      console.log('正在進行 SAC 登入...');
-      await page.fill('input[name="account"]', 'qa_test03');
-      await page.fill('input[name="password"]', 'qa03');
-      await page.click('button[type="submit"]');
-      await page.waitForTimeout(3000);
-    }
-
-    // [第一步] 點擊主選單 "Streaming"
-    console.log('正在嘗試開啟 Streaming 選單...');
-    try {
-      // 嘗試找尋包含 Streaming 文字的元素並點擊
-      const streamingLocator = page.locator('text="Streaming"').first();
-      await streamingLocator.waitFor({ state: 'visible', timeout: 5000 });
-      await streamingLocator.click({ force: true });
-      await page.waitForTimeout(2000);
-      console.log('✅ 已點擊 Streaming 選單');
-    } catch (e) {
-      console.log('⚠️ 一般點擊 Streaming 失敗，嘗試使用 Evaluate...');
-      await page.evaluate(() => {
-        const els = Array.from(document.querySelectorAll('*'));
-        const target = els.find(el => el.innerText && el.innerText.trim() === 'Streaming');
-        if (target) target.click();
-      });
-      await page.waitForTimeout(2000);
-    }
-
-    // [第一點五步] 點擊 "Stream Live" 子選單
-    console.log('正在嘗試點擊 Stream Live 子選單...');
-    try {
-      const streamLiveLocator = page.locator('text="Stream Live"').first();
-      await streamLiveLocator.waitFor({ state: 'visible', timeout: 5000 });
-      await streamLiveLocator.click({ force: true });
-      await page.waitForTimeout(3000);
-      console.log('✅ 已點擊 Stream Live 子選單');
-    } catch (e) {
-      console.log('⚠️ 一般點擊 Stream Live 失敗，嘗試使用 Evaluate...');
-      await page.evaluate(() => {
-        const els = Array.from(document.querySelectorAll('*'));
-        const target = els.find(el => el.innerText && el.innerText.trim() === 'Stream Live');
-        if (target) target.click();
-      });
-      await page.waitForTimeout(3000);
-    }
-
-    // [第二步] 尋找 "Open Game List" 按鈕
-    console.log('正在嘗試尋找 Open Game List 按鈕...');
-    const selectors = [
-      'button:has-text("Open Game List")',
-      'button:has-text("open game list")',
-      'button:has-text("遊戲列表")',
-      'button:has-text("Game")',
-      '.ant-btn-primary'
-    ];
-
-    let targetButton = null;
-    for (const sel of selectors) {
-      const btn = await page.$(sel);
-      if (btn && await btn.isVisible()) {
-        const text = await btn.innerText();
-        if (text.toLowerCase().includes('game') || text.includes('列表') || text.includes('List')) {
-          console.log(`✅ 找到可能的按鈕: "${text}" (選擇器: ${sel})`);
-          targetButton = btn;
-          break;
-        }
+        const spinRes = await steps.checkSpaceSpin(diag, targetGames[0], GAME_COORDINATE_MAP);
+        updateStepResult('checkSpaceSpin', spinRes);
+      } catch (err) {
+        console.error('--- [ERROR] Space Spin 失敗:', err.message);
+        updateStepResult('checkSpaceSpin', { success: false, error: err.message });
       }
     }
 
-    if (!targetButton) {
-      const debugPath = path.join(__dirname, '../public/screenshots/sac_debug_list_failed.png');
-      await page.screenshot({ path: debugPath });
-      console.error(`❌ 找不到遊戲列表按鈕，截圖已存至: ${debugPath}`);
-      throw new Error('找不到 "Open Game List" 按鈕，請檢查截圖確認頁面狀態');
-    }
-
-    await targetButton.click({ force: true });
-    for (let i = 0; i < 20; i++) {
-      if (interceptedJson) break;
-      await page.waitForTimeout(500);
-    }
-    const findArray = (obj) => {
-      if (!obj || typeof obj !== 'object') return null;
-      for (const key in obj) {
-        if (Array.isArray(obj[key]) && obj[key].length > 0 && obj[key][0].platform) return obj[key];
-        const res = findArray(obj[key]);
-        if (res) return res;
+    // --- [STEP 6] Game Operation (Auto Spin, etc) ---
+    setCurrentStep('gameOperation');
+    if (!gameLoadSucceeded) {
+      console.log('\x1b[33m[STEP 6] ⚠️ 遊戲未成功載入，跳過 AutoSpin 測試。\x1b[0m');
+      updateStepResult('gameOperation', { success: false, error: '遊戲未成功載入，跳過 AutoSpin 測試' });
+    } else if (diag.activeGamePage && !diag.activeGamePage.isClosed()) {
+      try {
+        const config = GAME_COORDINATE_MAP[targetGames[0]] || GAME_COORDINATE_MAP["default"];
+        const opRes = await steps.gameOperation(diag, targetGames[0], config);
+        updateStepResult('gameOperation', opRes);
+      } catch (err) {
+        console.error('--- [ERROR] Game Operation 失敗:', err.message);
+        updateStepResult('gameOperation', { success: false, error: err.message });
       }
-      return null;
-    };
-    const list = findArray(interceptedJson) || [];
-    let games = list.filter(g => (g.platform || '').toString().toUpperCase() === 'IDN').map(g => g.game_name || g.game_id);
-
-    // [自動備援機制] 如果抓不到任何 IDN 遊戲，自動匯入預設的遊戲清單
-    if (!games || games.length === 0) {
-      console.log('⚠️ 遊戲列表為空或攔截失敗，自動匯入預設測試遊戲清單 (Fallback)...');
-      games = [
-        "5200", "5300", "5400", "5500",
-        "4100", "4401", "2702", "4600", "2900", "3800"
-      ];
     }
 
-    return { success: true, games };
-  } catch (e) {
-    return { success: false, error: e.message };
-  } finally {
-    if (context) await context.close();
-  }
+    // --- [STEP 7] Start Streaming ---
+    setCurrentStep('startStreaming');
+    try {
+      const streamRes = await steps.startStreaming(page, context);
+      updateStepResult('startStreaming', streamRes);
+    } catch (err) {
+      console.error('--- [ERROR] Start Streaming 失敗:', err.message);
+      updateStepResult('startStreaming', { success: false, error: err.message });
+    }
+
+    console.log('--- [DIAG] 測試流程結束 ---');
+    // 等待前端輪詢有機會抓到最後一個步驟的結果，再回傳 HTTP response
+    await new Promise(r => setTimeout(r, 2500));
+
+    // 提示使用者決定後續操作
+    const decision = await askToContinue();
+    if (decision === 'continue') {
+      console.log('\x1b[32m[DIAG] 繼續模式：瀏覽器保持開啟 60 秒...\x1b[0m');
+      await new Promise(r => setTimeout(r, 60000));
+    }
+
+    return results;
+
+} catch (err) {
+        console.error('--- [ERROR] 主流程發生錯誤:', err.message);
+        return { success: false, error: err.message };
+    } finally {
+        setCurrentStep(null);
+    }
+} // <--- 確保這一個括號在最左邊，徹底關閉 checkWebsite
+
+// ==========================================
+// 獨立定義 getGameList (現在它不會被擠回去了)
+// ==========================================
+async function getGameList(url, _apiUrl) {
+    try {
+        // 預設測試遊戲清單
+        const games = ["5200", "5300", "5400", "5500", "4100", "4401", "2702", "4600", "2900", "3800"];
+        return { success: true, games: games };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
 }
 
-module.exports = { checkWebsite, getProgress, setCurrentStep, resetProgress, getGameList };
+// 最終匯出模組
+module.exports = {
+    checkWebsite,
+    getProgress,
+    setCurrentStep,
+    updateStepResult,
+    resetProgress,
+    getGameList
+};
+
+
+

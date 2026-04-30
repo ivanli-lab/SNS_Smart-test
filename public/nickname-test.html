@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🛠️ 測試工具-2 (暱稱整合測試) - 自動化測試</title>
+    <title>🛠️ SNS Smart test (Slot and Free Spin) - 自動化測試</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -58,6 +58,15 @@
         }
         .btn-primary { background: #e67e22; color: white; }
         .btn-primary:hover { background: #d35400; }
+        .run-actions { display: flex; align-items: center; gap: 10px; }
+        .icon-btn {
+            min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid #e0e0e0;
+            background: white; color: #c0392b; font-size: 14px; font-weight: 600; cursor: pointer;
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+        .icon-btn:hover { background: #fef2f2; border-color: #c0392b; }
+        .icon-btn:disabled { color: #bdc3c7; background: #f8f9fa; border-color: #e0e0e0; cursor: not-allowed; }
         .btn:disabled { background: #bdc3c7; cursor: not-allowed; }
 
         .test-item {
@@ -95,7 +104,7 @@
                 <a href="/" class="nav-btn">📋 Lobby</a>
                 <a href="/test2.html" class="nav-btn">🎮 Live Slot</a>
                 <a href="/sac.html" class="nav-btn">⚙️ SAC 後台</a>
-                <a href="/nickname-test.html" class="nav-btn active">🛠️ 測試工具-2 (暱稱)</a>
+                <a href="/nickname-test.html" class="nav-btn active">🛠️ SNS Smart test (Slot and Free Spin)</a>
             </nav>
             <div style="margin-top: auto; padding: 20px; font-size: 12px; color: #999; border-top: 1px solid #eee;">
                 💡 欲中斷測試並關閉工具，請在終端機按下 <b>[Q]</b> 或 <b>[Ctrl+C]</b>
@@ -113,7 +122,10 @@
 
                 <article class="card-panel">
                     <h3>⚙️ Run Control</h3>
-                    <button class="btn btn-primary" id="startBtn" onclick="startTest()">🚀 開始暱稱整合測試</button>
+                    <div class="run-actions">
+                        <button class="btn btn-primary" id="startBtn" onclick="startTest()">🚀 開始測試</button>
+                        <button class="icon-btn" id="stopBtn" type="button" onclick="stopTest()" title="停止測試" aria-label="停止測試" disabled><span aria-hidden="true">⏹️</span><span>停止測試</span></button>
+                    </div>
                 </article>
 
                 <article class="card-panel">
@@ -124,7 +136,7 @@
 
             <div class="dashboard-row middle">
                 <article class="card-panel">
-                    <h3>📋 Nickname Test Suite</h3>
+                    <h3>📋 SNS Smart test (Slot and Free Spin)</h3>
                     <div id="testList">
                         <div class="test-item" data-test="versionCheck">
                             <span>1️⃣ 版本與初始化檢查</span>
@@ -174,6 +186,12 @@
 
     <script>
         let pollingInterval = null;
+        let isStopping = false;
+
+        function setStoppedState() {
+            document.getElementById('summaryText').textContent = '測試已停止';
+            document.getElementById('statusText').textContent = '測試已停止';
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
              if (typeof DEFAULT_URL !== 'undefined') {
@@ -186,7 +204,9 @@
             if (!url) return alert('請輸入網址');
 
             document.getElementById('startBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
             resetUI();
+            document.getElementById('summaryText').textContent = '測試進行中';
 
             pollingInterval = setInterval(pollProgress, 1000);
 
@@ -198,12 +218,49 @@
                 });
                 const data = await res.json();
                 console.log('Test Finished:', data);
+                if (data.stopped) {
+                    setStoppedState();
+                } else {
+                    document.getElementById('summaryText').textContent = '測試完成';
+                }
             } catch (err) {
                 console.error(err);
+                document.getElementById('summaryText').textContent = '測試失敗';
             } finally {
                 clearInterval(pollingInterval);
+                pollingInterval = null;
                 document.getElementById('startBtn').disabled = false;
-                document.getElementById('statusText').textContent = '測試結束';
+                document.getElementById('stopBtn').disabled = true;
+                isStopping = false;
+                if (document.getElementById('summaryText').textContent === '測試已停止') {
+                    setStoppedState();
+                } else {
+                    document.getElementById('statusText').textContent = '測試結束';
+                }
+            }
+        }
+
+        async function stopTest() {
+            if (isStopping) return;
+
+            isStopping = true;
+            document.getElementById('stopBtn').disabled = true;
+            document.getElementById('summaryText').textContent = '停止測試中...';
+            document.getElementById('statusText').textContent = '停止測試中...';
+
+            try {
+                const res = await fetch('/api/check4/stop', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) {
+                    throw new Error(data.error || '停止測試失敗');
+                }
+                setStoppedState();
+            } catch (err) {
+                console.error(err);
+                document.getElementById('summaryText').textContent = '停止測試失敗';
+                document.getElementById('statusText').textContent = '停止測試失敗';
+                document.getElementById('stopBtn').disabled = false;
+                isStopping = false;
             }
         }
 
@@ -212,13 +269,22 @@
                 item.className = 'test-item';
                 item.querySelector('.status').textContent = '⏸️';
             });
+            document.getElementById('summaryText').textContent = '準備就緒';
+            document.getElementById('statusText').textContent = '等待開始...';
             document.getElementById('manualInstruction').classList.add('hidden');
         }
 
         async function pollProgress() {
             try {
                 const res = await fetch('/api/progress4');
-                const { currentStep, stepResults } = await res.json();
+                const { currentStep, stepResults, stopRequested } = await res.json();
+
+                const hasStopped = stopRequested || stepResults.stopped?.stopped;
+
+                if (hasStopped) {
+                    setStoppedState();
+                    return;
+                }
 
                 if (currentStep) {
                     const item = document.querySelector(`[data-test="${currentStep}"]`);

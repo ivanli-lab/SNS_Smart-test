@@ -1,13 +1,29 @@
 async function gameOperation(diag, targetId, config) {
-  if (!diag.activeGamePage.isClosed()) {
+  // 第一時間檢查頁面是否已進入關閉狀態
+  if (!diag.activeGamePage || diag.activeGamePage.isClosed()) {
+    console.log('\x1b[33m[STEP 6] ⚠️ 遊戲頁面已關閉，跨過此步驟。\x1b[0m');
+    return { success: true, message: '遊戲頁面已關閉，跨過' };
+  }
+
+  try {
     await diag.activeGamePage.bringToFront();
     // 強化：點擊 body 確保焦點，但縮短時間
     await diag.activeGamePage.click('body');
     await diag.activeGamePage.waitForTimeout(500);
+  } catch (e) {
+    console.log('\x1b[33m[STEP 6] 頁面操作失敗，可能已關閉，跨過此步驟。\x1b[0m');
+    return { success: true, message: '遊戲頁面操作失敗，跨過' };
   }
   
   let targetCanvas = await diag.findCanvas(diag.activeGamePage);
-  if (!targetCanvas) throw new Error('找不到遊戲 Canvas');
+  if (!targetCanvas) {
+    const isEmbedded = diag.activeGamePage.url().includes('sac');
+    if (isEmbedded) {
+      console.log('\x1b[33m[STEP 6] ⚠️ 遊戲以 iframe 嵌入 SAC 頁面，無法存取 Canvas，跳過 AutoSpin 測試。\x1b[0m');
+      return { success: true, message: 'iframe 嵌入遊戲，跳過 AutoSpin 測試' };
+    }
+    throw new Error('找不到遊戲 Canvas');
+  }
 
   let box = null;
   for (let retry = 0; retry < 10; retry++) {

@@ -80,9 +80,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
       '--no-first-run',
       '--no-zygote',
       '--single-process',
-      '--disable-gpu',
-      // --- 加入下面這一行，強制每次都用新的身份 ---
-      '--user-data-dir=/tmp/chrome-user-data-' + Date.now()
+      '--disable-gpu'
     ]
   });
   const context = await browser.newContext({ viewport });

@@ -9,13 +9,46 @@ if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir, { recursive: true });
 let currentStep2 = null;
 const stepResults2 = {};
 const totalSteps2 = 8;
+let activeBrowser = null;
+let stopRequested = false;
+let isRunning = false;
 
 function setCurrentStep2(stepKey) { currentStep2 = stepKey; }
 function updateStepResult2(stepKey, result) { stepResults2[stepKey] = result; }
-function getProgress2() { return { currentStep: currentStep2, stepResults: stepResults2, totalSteps: totalSteps2 }; }
+function getProgress2() {
+    return {
+        currentStep: currentStep2,
+        stepResults: stepResults2,
+        totalSteps: totalSteps2,
+        isRunning,
+        stopRequested
+    };
+}
 function resetProgress2() {
     currentStep2 = null;
     Object.keys(stepResults2).forEach(key => delete stepResults2[key]);
+    stopRequested = false;
+}
+
+function isStopError(error) {
+    return error?.name === 'StopRequestedError' || /Target page, context or browser has been closed/i.test(error?.message || '');
+}
+
+function ensureNotStopped() {
+    if (stopRequested) {
+        const error = new Error('Test stopped by user');
+        error.name = 'StopRequestedError';
+        throw error;
+    }
+}
+
+async function stopNicknameTest() {
+    stopRequested = true;
+    currentStep2 = null;
+    updateStepResult2('stopped', { success: false, stopped: true, message: '測試已停止' });
+    if (activeBrowser) {
+        await activeBrowser.close().catch(() => { });
+    }
 }
 
 /**
@@ -143,6 +176,8 @@ async function smartClick(handle, textRegex, description = 'Element') {
 
 async function checkWebsite2(url) {
     console.log('[Diagnostic] Launching Chromium (Ultra-Clean Mode)...');
+    stopRequested = false;
+    isRunning = true;
     const browser = await chromium.launch({
         headless: false,
         args: [
@@ -152,9 +187,7 @@ async function checkWebsite2(url) {
             '--no-first-run',
             '--no-zygote',
             '--single-process',
-            '--disable-gpu',
-            // --- 加入下面這一行，強制每次都用新的身份 ---
-            '--user-data-dir=/tmp/chrome-user-data-' + Date.now()
+            '--disable-gpu'
             //, '--disable-translate',
             // '--disable-features=Translate,TranslateLanguageDetection,TranslateLanguageDetectionInternal,IPH_TranslateMenuButton',
             // '--no-first-run',
@@ -164,6 +197,7 @@ async function checkWebsite2(url) {
             // '--window-position=0,0'
         ]
     });
+    activeBrowser = browser;
 
     const context = await browser.newContext({
         locale: 'en-US',
@@ -174,14 +208,17 @@ async function checkWebsite2(url) {
     resetProgress2();
 
     try {
+        ensureNotStopped();
         // 1️⃣ Initialize
         setCurrentStep2('versionCheck');
         console.log('[Step 1] Initializing page:', url);
         await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
         await page.waitForTimeout(3000);
+        ensureNotStopped();
 
         // 擊殺翻譯列
         await dismissTranslateBar(page);
+        ensureNotStopped();
 
         const gVersion = await page.evaluate(() => window.gVersion || 'unknown');
         updateStepResult2('versionCheck', { success: true, value: gVersion });
@@ -197,6 +234,7 @@ async function checkWebsite2(url) {
 
         let nicknameConfirmed = false;
         for (let i = 0; i < 6; i++) {
+            ensureNotStopped();
             const ok = await smartClick(page, /Confirm|確認|OK/i, 'Nickname OK');
             await page.waitForTimeout(2000);
 
@@ -230,6 +268,7 @@ async function checkWebsite2(url) {
         setCurrentStep2('freeSpinClaim');
         console.log('[Step 3] Handling Congratulations...');
         for (let i = 0; i < 20; i++) {
+            ensureNotStopped();
             await smartClick(page, /CONTINUE|CLAIM SPIN|CLAIM|Claim Now|Confirm|確認|繼續|領取/i, 'Lobby Congrats');
             await page.waitForTimeout(1500);
 
@@ -257,6 +296,7 @@ async function checkWebsite2(url) {
         // 點擊大頭貼前再次確保翻譯泡泡消失
         await dismissTranslateBar(page);
         await page.waitForTimeout(1000);
+        ensureNotStopped();
 
         const viewport = page.viewportSize() || { width: 1280, height: 720 };
 
@@ -313,6 +353,7 @@ async function checkWebsite2(url) {
             console.log(`[Step 4] Dialog opened. Initial name choice: ${newName}`);
 
             for (let i = 0; i < 15; i++) {
+                ensureNotStopped();
                 // 輸入暱稱
                 await inputLocator.click();
                 await page.keyboard.press('Control+A');
@@ -360,6 +401,7 @@ async function checkWebsite2(url) {
 
         let success = false;
         for (let j = 0; j < 8; j++) {
+            ensureNotStopped();
             const content = await page.evaluate(() => document.body.innerText);
             if (content.includes(newName)) { success = true; break; }
             await page.waitForTimeout(1500);
@@ -376,6 +418,7 @@ async function checkWebsite2(url) {
         updateStepResult2('manualInteraction', { success: false, waiting: true, message: '請點擊直播主卡片' });
 
         const [newPage] = await Promise.all([context.waitForEvent('page', { timeout: 120000 })]);
+        ensureNotStopped();
         await newPage.waitForLoadState('domcontentloaded', { timeout: 90000 });
         updateStepResult2('manualInteraction', { success: true });
         console.log('[Step 5] Room page loaded!');
@@ -383,6 +426,7 @@ async function checkWebsite2(url) {
         // 🚀 新增：進入直播間後等待 10 秒，確保遊戲與彈窗完整載入
         console.log('[系統] 正在等待直播間頁面完整載入 (10秒)...');
         await newPage.waitForTimeout(10000);
+        ensureNotStopped();
 
         // 6️⃣ Handle Terms and Conditions
         setCurrentStep2('termsAndConditions');
@@ -454,6 +498,7 @@ async function checkWebsite2(url) {
 
         let popupSuccess = false;
         for (let i = 0; i < 10; i++) {
+            ensureNotStopped();
             const handled = await scanAndHandlePopups(newPage);
             if (handled) { popupSuccess = true; break; }
             if (i > 4) {
@@ -477,21 +522,32 @@ async function checkWebsite2(url) {
         updateStepResult2('soundControl', { success: true });
 
         console.log('[Diagnostic] TEST COMPLETED.');
+        return { success: true, stopped: false, stepResults: stepResults2 };
+    } catch (error) {
+        if (stopRequested && isStopError(error)) {
+            console.log('[Diagnostic] TEST STOPPED BY USER.');
+            return { success: false, stopped: true, message: '測試已停止', stepResults: stepResults2 };
+        }
+        throw error;
     } finally {
         setCurrentStep2(null);
+        if (!stopRequested) {
+            // 詢問使用者是否繼續
+            const decision = await askToContinue();
 
-        // 詢問使用者是否繼續
-        const decision = await askToContinue();
-
-        if (decision === 'quit') {
-            await browser.close().catch(() => { });
-            console.log('Browser closed immediately');
-        } else {
-            console.log('💡 瀏覽器將保持開啟 60 秒後自動關閉...');
-            await page.waitForTimeout(60000).catch(() => { });
-            await browser.close().catch(() => { });
+            if (decision === 'quit') {
+                await browser.close().catch(() => { });
+                console.log('Browser closed immediately');
+            } else {
+                console.log('💡 瀏覽器將保持開啟 60 秒後自動關閉...');
+                await page.waitForTimeout(60000).catch(() => { });
+                await browser.close().catch(() => { });
+            }
         }
+        activeBrowser = null;
+        isRunning = false;
+        stopRequested = false;
     }
 }
 
-module.exports = { checkWebsite2, getProgress2, setCurrentStep2 };
+module.exports = { checkWebsite2, getProgress2, setCurrentStep2, stopNicknameTest };

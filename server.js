@@ -23,7 +23,8 @@ const {
 const { 
   checkWebsite2: checkWebsite4, 
   getProgress2: getProgress4, 
-  setCurrentStep2: setCurrentStep4 
+  setCurrentStep2: setCurrentStep4,
+  stopNicknameTest
 } = require('./routes/check_nickname.js');
 
 const app = express();
@@ -236,6 +237,16 @@ app.post('/api/check4', async (req, res) => {
   }
 });
 
+app.post('/api/check4/stop', async (req, res) => {
+  try {
+    await stopNicknameTest();
+    res.json({ success: true, stopped: true });
+  } catch (error) {
+    console.error('Error stopping nickname:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -246,7 +257,7 @@ const server = app.listen(PORT, () => {
   console.log('📋 Lobby: http://localhost:' + PORT + '/');
   console.log('🎮 Live Slot: http://localhost:' + PORT + '/test2.html');
   console.log('⚙️ SAC: http://localhost:' + PORT + '/sac.html');
-  console.log('🛠️ Nickname Test: http://localhost:' + PORT + '/nickname-test.html');
+  console.log('🛠️ SNS Smart test (Slot and Free Spin): http://localhost:' + PORT + '/nickname-test.html');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   
   if (AUTO_OPEN_BROWSER) {
