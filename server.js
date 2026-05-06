@@ -6,19 +6,27 @@ const path = require('path');
 const fs = require('fs');
 const { exec } = require('child_process');
 const { initInteraction } = require('./utils/interaction');
-const { checkWebsite, getProgress, setCurrentStep, resetProgress } = require('./routes/check');
+const { 
+  checkWebsite, 
+  getProgress, 
+  setCurrentStep, 
+  resetProgress,
+  stopTest: stopTest1 
+} = require('./routes/check');
 const { 
   checkWebsite: checkWebsite2, 
   getProgress: getProgress2, 
   setCurrentStep: setCurrentStep2,
-  resetProgress: resetProgress2
+  resetProgress: resetProgress2,
+  stopTest: stopTest2
 } = require('./routes/check2');
 const { 
   checkWebsite: checkWebsite3, 
   getProgress: getProgress3, 
   setCurrentStep: setCurrentStep3,
   resetProgress: resetProgress3,
-  getGameList: getGameList3
+  getGameList: getGameList3,
+  stopTest: stopTest3
 } = require('./routes/check3');
 const { 
   checkWebsite2: checkWebsite4, 
@@ -144,6 +152,15 @@ app.post('/api/check', async (req, res) => {
   }
 });
 
+app.post('/api/check/stop', async (req, res) => {
+  try {
+    await stopTest1();
+    res.json({ success: true, stopped: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // API endpoint for progress
 app.get('/api/progress', (req, res) => {
   res.json(getProgress());
@@ -158,7 +175,7 @@ app.get('/api/progress3', (req, res) => {
 });
 
 app.get('/api/progress4', (req, res) => {
-  res.json(getProgress4 ? getProgress4() : { currentStep: null, stepResults: {}, totalSteps: 7 });
+  res.json(getProgress4 ? getProgress4() : { currentStep: null, stepResults: {}, totalSteps: 8 });
 });
 
 // 獲取 SAC 遊戲列表
@@ -195,6 +212,15 @@ app.post('/api/check2', async (req, res) => {
   }
 });
 
+app.post('/api/check2/stop', async (req, res) => {
+  try {
+    await stopTest2();
+    res.json({ success: true, stopped: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // API endpoint for checking website (Test Tool 3 - SAC)
 app.post('/api/check3', async (req, res) => {
   try {
@@ -218,6 +244,15 @@ app.post('/api/check3', async (req, res) => {
     res.status(500).json({ error: error.message });
   } finally {
     if (setCurrentStep3) setCurrentStep3(null);
+  }
+});
+
+app.post('/api/check3/stop', async (req, res) => {
+  try {
+    await stopTest3();
+    res.json({ success: true, stopped: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

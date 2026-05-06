@@ -1,10 +1,12 @@
 const { chromium } = require('playwright');
 const { askToContinue } = require('../utils/interaction');
-const { setupNetworkLogging } = require('../scripts/network-logger');
+const { setupNetworkLogging, disableNetworkLogging, resetNetworkLogging } = require('../scripts/network-logger');
 
 /**
  * Live Slot (測試工具 2) 核心邏輯 - 超強載入同步版
  */
+let activeBrowser = null;
+let stopRequested = false;
 let currentStep = null;
 const stepResults = {};
 const totalSteps = 18;
@@ -13,11 +15,29 @@ function setCurrentStep(stepKey) { currentStep = stepKey; }
 function updateStepResult(stepKey, result) {
   stepResults[stepKey] = { ...stepResults[stepKey], ...result, pending: false };
 }
-function getProgress() { return { currentStep, stepResults, totalSteps }; }
+function getProgress() { return { currentStep, stepResults, totalSteps, stopRequested }; }
+
+function ensureNotStopped() {
+  if (stopRequested) {
+    const error = new Error('Test stopped by user');
+    error.name = 'StopRequestedError';
+    throw error;
+  }
+}
+
+async function stopTest() {
+  stopRequested = true;
+  if (activeBrowser) {
+    console.log('🛑 [Live Slot] 收到停止請求，正在關閉瀏覽器...');
+    await activeBrowser.close().catch(() => {});
+    activeBrowser = null;
+  }
+}
 
 function resetProgress() {
   currentStep = null;
   Object.keys(stepResults).forEach(key => delete stepResults[key]);
+  stopRequested = false;
   const steps = [
     'streamNSpinDialog', 'streamingNowClick', 'socketJoinData', 'gVersion',
     'howToPlayClosed', 'maxButton3M', 'minButton200', 'plusButton28',
@@ -29,9 +49,11 @@ function resetProgress() {
 }
 
 async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
+  stopRequested = false;
   let browser = null;
   try {
     resetProgress();
+    resetNetworkLogging(); // 重置日誌狀態
     browser = await chromium.launch({
       headless: false, args: [
         '--no-sandbox',
@@ -43,11 +65,13 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
         '--disable-gpu'
       ]
     });
+    activeBrowser = browser;
     const context = await browser.newContext({ viewport });
     const page = await context.newPage();
     setupNetworkLogging(page);
 
     await page.goto(url, { waitUntil: 'networkidle' }).catch(() => { });
+    ensureNotStopped();
 
     // 1️⃣ 彈窗檢查
     setCurrentStep('streamNSpinDialog');
@@ -56,17 +80,27 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
       if (btn) btn.click();
     });
     updateStepResult('streamNSpinDialog', { success: true });
+    ensureNotStopped();
 
     await startMainFlow(context, page);
     return { success: true };
   } catch (error) {
+    if (stopRequested && (error.name === 'StopRequestedError' || error.message.includes('closed'))) {
+      console.log('✅ [Live Slot] 測試已成功中斷');
+      return { success: false, stopped: true };
+    }
     console.error('❌ 測試發生異常:', error);
     return { success: false };
   } finally {
-    if (browser) {
-      const decision = await askToContinue();
-      if (decision === 'quit') await browser.close().catch(() => { });
+    if (browser && !stopRequested) {
+      // 在進入互動模式前，關閉所有背景網路日誌，確保終端機乾淨
+      disableNetworkLogging();
+      console.log('💡 測試完成，瀏覽器將在 3 秒後自動關閉...');
+      await new Promise(r => setTimeout(r, 3000));
+      await browser.close().catch(() => { });
     }
+    activeBrowser = null;
+    stopRequested = false;
   }
 }
 
@@ -74,6 +108,7 @@ async function startMainFlow(context, page) {
   // 2️⃣ 開啟直播間
   setCurrentStep('streamingNowClick');
   stepResults['streamingNowClick'] = { success: false, pending: true, message: '請手動點擊直播間...' };
+  ensureNotStopped();
 
   const newPage = await context.waitForEvent('page', { timeout: 120000 });
   updateStepResult('streamingNowClick', { success: true, message: '進入直播間，開始強力監控載入進度...' });
@@ -91,6 +126,7 @@ async function startMainFlow(context, page) {
 
   // 1. 強制等待 8 秒 (基礎開門時間)
   await newPage.waitForTimeout(8000);
+  ensureNotStopped();
 
   // 2. 智慧巡邏：持續檢查是否還有 Loading 條或是百分比
   await newPage.waitForFunction(() => {
@@ -115,9 +151,11 @@ async function startMainFlow(context, page) {
 
   console.log('✅ 遊戲載入完成，畫面已穩定。');
   await newPage.waitForTimeout(5000); // 載入完畢後再給 5 秒緩衝
+  ensureNotStopped();
 
   const runStep = async (id, name, fn) => {
     setCurrentStep(id);
+    ensureNotStopped();
     const res = await fn().catch(e => ({ success: false, message: e.message }));
     updateStepResult(id, res);
     await newPage.waitForTimeout(1500);
@@ -176,4 +214,4 @@ async function startMainFlow(context, page) {
   await newPage.waitForTimeout(2000);
 }
 
-module.exports = { checkWebsite, getProgress, setCurrentStep, resetProgress };
+module.exports = { checkWebsite, getProgress, setCurrentStep, resetProgress, stopTest };

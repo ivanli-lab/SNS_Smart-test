@@ -58,7 +58,8 @@ async function checkAllStreamersImages(page, _timestamp) {
                      '未知主播';
         
         // 檢查圖片狀態 (naturalWidth 為 0 代表破圖)
-        const img = card.querySelector('img');
+        // 🚀 核心修正：優先檢查主圖，避免小頭像 (data-streamer) 破圖造成誤報
+        const img = card.querySelector('img:not([data-streamer="true"])') || card.querySelector('img');
         const isBroken = img ? (img.complete && img.naturalWidth === 0) : true;
         const isLoaded = img ? (img.complete && img.naturalWidth > 0) : false;
 

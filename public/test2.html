@@ -1323,9 +1323,19 @@
             label.innerHTML = html;
         }
 
-        function stopTest() {
-            isTestRunning = false;
-            document.getElementById('placeholderText').textContent = '測試已停止';
+        async function stopTest() {
+            try {
+                const response = await fetch('/api/check2/stop', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    isTestRunning = false;
+                    document.getElementById('placeholderText').textContent = '測試已停止 (瀏覽器已關閉)';
+                }
+            } catch (e) {
+                console.error('停止測試失敗:', e);
+                isTestRunning = false;
+                document.getElementById('placeholderText').textContent = '測試已停止';
+            }
         }
 
         document.addEventListener('DOMContentLoaded', () => {

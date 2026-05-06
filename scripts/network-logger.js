@@ -3,6 +3,8 @@
  * 記錄 HTTP 請求/回應和 WebSocket 封包
  */
 
+let loggingActive = true;
+
 function setupNetworkLogging(page, options = {}) {
   const {
     maxBodyLength = 1000
@@ -10,6 +12,7 @@ function setupNetworkLogging(page, options = {}) {
   
   // HTTP 請求監聽
   page.on('request', request => {
+    if (!loggingActive) return;
     const url = request.url();
     const method = request.method();
     
@@ -39,6 +42,7 @@ function setupNetworkLogging(page, options = {}) {
   
   // HTTP 回應監聽
   page.on('response', async response => {
+    if (!loggingActive) return;
     const url = response.url();
     const status = response.status();
     
@@ -62,10 +66,11 @@ function setupNetworkLogging(page, options = {}) {
   // WebSocket 完整監聽
   page.on('websocket', ws => {
     const wsUrl = ws.url();
-    console.log(`[WEBSOCKET] 連線建立: ${wsUrl}`);
+    if (loggingActive) console.log(`[WEBSOCKET] 連線建立: ${wsUrl}`);
     
     // 記錄發送的封包
     ws.on('framesent', event => {
+      if (!loggingActive) return;
       try {
         const data = JSON.parse(event.payload);
         console.log(`[WEBSOCKET SENT] ${JSON.stringify(data, null, 2)}`);
@@ -79,6 +84,7 @@ function setupNetworkLogging(page, options = {}) {
     
     // 記錄接收的封包
     ws.on('framereceived', event => {
+      if (!loggingActive) return;
       try {
         const data = JSON.parse(event.payload);
         console.log(`[WEBSOCKET RECEIVED] ${JSON.stringify(data, null, 2)}`);
@@ -92,9 +98,18 @@ function setupNetworkLogging(page, options = {}) {
     
     // 記錄連線關閉
     ws.on('close', () => {
-      console.log(`[WEBSOCKET] 連線關閉: ${wsUrl}`);
+      if (loggingActive) console.log(`[WEBSOCKET] 連線關閉: ${wsUrl}`);
     });
   });
 }
 
-module.exports = { setupNetworkLogging };
+function disableNetworkLogging() {
+  loggingActive = false;
+  console.log('\x1b[33m[系統] 已停止背景網路日誌輸出。\x1b[0m');
+}
+
+function resetNetworkLogging() {
+  loggingActive = true;
+}
+
+module.exports = { setupNetworkLogging, disableNetworkLogging, resetNetworkLogging };

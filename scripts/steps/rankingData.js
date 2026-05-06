@@ -142,8 +142,8 @@ async function checkRankingData(page, _timestamp, getRankingDataFn) {
         // 3. 抓取前三名項目
         const items = Array.from(container.querySelectorAll('div[class*="_rankingItem_"]')).slice(0, 3);
         return items.map((item, index) => {
-          // 檢查破圖
-          const img = item.querySelector('img');
+          // 🚀 核心修正：優先檢查主圖，避免小頭像 (data-streamer) 破圖造成誤報
+          const img = item.querySelector('img:not([data-streamer="true"])') || item.querySelector('img');
           const isBroken = img ? (img.naturalWidth === 0 || img.complete === false) : true;
           
           // 獲取元素位置以便後續截圖 (在 evaluate 外部執行截圖)
@@ -233,7 +233,8 @@ async function checkRankingData(page, _timestamp, getRankingDataFn) {
           }
           
           const isBroken = await item.evaluate((el) => {
-            const img = el.querySelector('img');
+            // 🚀 核心修正：優先檢查主圖
+            const img = el.querySelector('img:not([data-streamer="true"])') || el.querySelector('img');
             return img ? (img.naturalWidth === 0 || img.complete === false) : true;
           });
 

@@ -1,0 +1,18 @@
+services:
+  sns-test-tool:
+    build: .
+    image: sns-smart-test:latest
+    container_name: sns-smart-test-prod
+    ports:
+      - "80:3000"     # 外部訪問 Web 介面 (HTTP)
+      - "5900:5900"   # 外部訪問 VNC (偵錯用)
+    environment:
+      - PORT=3000
+      - AUTO_OPEN_BROWSER=false
+      - NODE_ENV=production
+      - HEADLESS=true
+    ipc: host         # 關鍵：防止 Playwright/Chromium 崩潰
+    init: true        # 防止殭屍進程
+    restart: always   # 伺服器重啟後自動啟動
+    volumes:
+      - ./logs:/app/logs # 持久化保存日誌

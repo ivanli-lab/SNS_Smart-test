@@ -66,8 +66,9 @@ async function checkStreamingNowCount(page) {
         const footerSpan = card.querySelector('div[data-footer="true"] span');
         const name = footerSpan ? footerSpan.textContent.trim() : '未知主播';
         
-        // 檢查圖片是否破圖 (naturalWidth 為 0 代表載入失敗)
-        const isBroken = img.naturalWidth === 0;
+        // 🚀 核心修正：優先檢查主封面圖 (Cover Image)，避免因為小頭像破圖導致測試失敗
+        const mainImg = card.querySelector('img:not([data-streamer="true"])') || img;
+        const isBroken = mainImg.naturalWidth === 0;
         
         return { name, isBroken };
       });

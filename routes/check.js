@@ -49,10 +49,11 @@ async function takeStepScreenshot(page, stepName, status) {
   }
 }
 
-// Real-time progress tracking
+let activeBrowser = null;
+let stopRequested = false;
 let currentStep = null;
 const stepResults = {};
-const totalSteps = 13;
+const totalSteps = 14;
 
 function setCurrentStep(stepKey) {
   currentStep = stepKey;
@@ -63,15 +64,34 @@ function updateStepResult(stepKey, result) {
 }
 
 function getProgress() {
-  return { currentStep, stepResults, totalSteps };
+  return { currentStep, stepResults, totalSteps, stopRequested };
 }
 
 function resetProgress() {
   currentStep = null;
   Object.keys(stepResults).forEach(key => delete stepResults[key]);
+  stopRequested = false;
+}
+
+function ensureNotStopped() {
+  if (stopRequested) {
+    const error = new Error('Test stopped by user');
+    error.name = 'StopRequestedError';
+    throw error;
+  }
+}
+
+async function stopTest() {
+  stopRequested = true;
+  if (activeBrowser) {
+    console.log('🛑 [Lobby] 收到停止請求，正在關閉瀏覽器...');
+    await activeBrowser.close().catch(() => {});
+    activeBrowser = null;
+  }
 }
 
 async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
+  stopRequested = false;
   const browser = await chromium.launch({
     headless: false, args: [
       '--no-sandbox',
@@ -83,6 +103,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
       '--disable-gpu'
     ]
   });
+  activeBrowser = browser;
   const context = await browser.newContext({ viewport });
   const page = await context.newPage();
 
@@ -141,6 +162,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
   await clearScreenshots();
 
   try {
+    ensureNotStopped();
     console.log(`Start navigation to ${url}`);
     try {
       await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
@@ -151,6 +173,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
 
     await page.waitForTimeout(1500);
     await takeStepScreenshot(page, 'step0-nav', 'success');
+    ensureNotStopped();
 
     // 1️⃣ gVersion 版號測試
     setCurrentStep('gVersion');
@@ -164,6 +187,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
       updateStepResult('gVersion', { success: false, error: results.checks.gVersion.error });
       await takeStepScreenshot(page, 'step1-gVersion', 'fail');
     }
+    ensureNotStopped();
 
     // 2️⃣ Stream n'Spin 彈窗測試
     setCurrentStep('streamNSpinDialog');
@@ -178,6 +202,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
       updateStepResult('streamNSpinDialog', { success: false, error: results.checks.streamNSpinDialog.error });
       await takeStepScreenshot(page, 'step2-dialog', 'fail');
     }
+    ensureNotStopped();
 
     // 3️⃣ 更名功能測試
     setCurrentStep('renameFunction');
@@ -200,6 +225,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
       updateStepResult('renameFunction', { success: false, error: results.checks.renameFunction.error });
       await takeStepScreenshot(page, 'step3-rename', 'fail');
     }
+    ensureNotStopped();
 
     // 4️⃣ Streaming Now 已開啟的直播間
     setCurrentStep('streamingNowCount');
@@ -213,6 +239,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
       updateStepResult('streamingNowCount', results.checks.streamingNowCount);
       await takeStepScreenshot(page, 'step4-streamingCount', 'fail');
     }
+    ensureNotStopped();
 
     // 5️⃣ 排序按鈕測試 (先左後右)
     setCurrentStep('sortButton');
@@ -227,6 +254,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
       updateStepResult('sortButton', { success: false, error: results.checks.sortButton.error });
       await takeStepScreenshot(page, 'step5-sort', 'fail');
     }
+    ensureNotStopped();
 
     // 6️⃣ Promotion 圖片檢查
     setCurrentStep('promotionImages');
@@ -241,6 +269,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
       updateStepResult('promotionImages', { success: false, error: results.checks.promotionImages.error });
       await takeStepScreenshot(page, 'step6-promotion', 'fail');
     }
+    ensureNotStopped();
 
     // 7️⃣ All Streamers 圖片檢查
     setCurrentStep('allStreamersImages');
@@ -254,6 +283,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
       updateStepResult('allStreamersImages', results.checks.allStreamersImages);
       await takeStepScreenshot(page, 'step7-allStreamersImg', 'fail');
     }
+    ensureNotStopped();
 
     // 8️⃣ All Streamers 排列按鈕測試
     setCurrentStep('allStreamersSortButton');
@@ -267,6 +297,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
       updateStepResult('allStreamersSortButton', { success: false, error: results.checks.allStreamersSortButton.error });
       await takeStepScreenshot(page, 'step8-allStreamersSort', 'fail');
     }
+    ensureNotStopped();
 
     // 9️⃣ 直播主介紹卡片點擊測試
     setCurrentStep('streamerCardClick');
@@ -284,6 +315,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
       updateStepResult('streamerCardClick', { success: false, error: results.checks.streamerCardClick.error });
       await takeStepScreenshot(page, 'step9-cardClick', 'fail');
     }
+    ensureNotStopped();
 
     // 🔟 Lobby 送禮功能
     setCurrentStep('lobbyGift');
@@ -297,6 +329,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
       updateStepResult('lobbyGift', { success: false, error: results.checks.lobbyGift.error });
       await takeStepScreenshot(page, 'step10-gift', 'fail');
     }
+    ensureNotStopped();
 
     // 1️⃣1️⃣ 排行榜檢查
     setCurrentStep('rankingData');
@@ -310,6 +343,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
       updateStepResult('rankingData', { success: false, error: results.checks.rankingData.error });
       await takeStepScreenshot(page, 'step11-ranking', 'fail');
     }
+    ensureNotStopped();
 
     // 1️⃣2️⃣ 直播主照片檢查
     setCurrentStep('streamerPhoto');
@@ -323,6 +357,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
       updateStepResult('streamerPhoto', { success: false, error: results.checks.streamerPhoto.error });
       await takeStepScreenshot(page, 'step12-photo', 'fail');
     }
+    ensureNotStopped();
 
     // 1️⃣3️⃣ 返回按鈕測試（返回上一頁）
     setCurrentStep('backButton');
@@ -337,27 +372,26 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
       await takeStepScreenshot(page, 'step13-back', 'fail');
     }
   } catch (error) {
+    if (stopRequested && (error.name === 'StopRequestedError' || error.message.includes('closed'))) {
+      console.log('✅ [Lobby] 測試已成功中斷');
+      return { success: false, stopped: true };
+    }
     console.error('checkWebsite error:', error);
     results.error = String(error && error.message || error);
     results.stack = error && error.stack ? error.stack : undefined;
   } finally {
     setCurrentStep(null);
-
-    // 詢問使用者是否繼續
-    const decision = await askToContinue();
-
-    if (decision === 'quit') {
-      await browser.close().catch(() => { });
-      console.log('Browser closed immediately');
-    } else {
-      console.log('💡 瀏覽器將保持開啟 60 秒後自動關閉...');
-      await page.waitForTimeout(60000).catch(() => { });
-      await browser.close().catch(() => { });
+    if (!stopRequested) {
+      console.log('💡 測試完成，瀏覽器將在 3 秒後自動關閉...');
+      await new Promise(r => setTimeout(r, 3000));
+      if (activeBrowser) await activeBrowser.close().catch(() => { });
       console.log('Browser closed');
     }
+    activeBrowser = null;
+    stopRequested = false;
   }
 
   return results;
 }
 
-module.exports = { checkWebsite, getProgress, setCurrentStep, resetProgress };
+module.exports = { checkWebsite, getProgress, setCurrentStep, resetProgress, stopTest };

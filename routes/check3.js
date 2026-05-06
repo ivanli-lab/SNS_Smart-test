@@ -8,6 +8,25 @@ const { askToContinue } = require('../utils/interaction');
 let currentStep = null;
 const stepResults = {};
 const totalSteps = 7;
+let activeBrowser = null;
+let stopRequested = false;
+
+function ensureNotStopped() {
+  if (stopRequested) {
+    const error = new Error('Test stopped by user');
+    error.name = 'StopRequestedError';
+    throw error;
+  }
+}
+
+async function stopTest() {
+  stopRequested = true;
+  if (activeBrowser) {
+    console.log('🛑 [SAC] 收到停止請求，正在關閉瀏覽器...');
+    await activeBrowser.close().catch(() => {});
+    activeBrowser = null;
+  }
+}
 
 const GAME_COORDINATE_MAP = {
   "4100": {
@@ -100,6 +119,7 @@ class UltimateStabilityManager {
     this.lastRenameOkAt = 0; // [新增] 用於追蹤 GS API 成功通訊
     this.lastSpinResponseAt = 0;
     this.isInFreeGame = false;
+    this.loggingActive = true; // [新增] 用於控制背景日誌輸出
     this.screenshotDir = path.join(__dirname, '../public/screenshots/sac');
     if (!fs.existsSync(this.screenshotDir)) fs.mkdirSync(this.screenshotDir, { recursive: true });
   }
@@ -147,7 +167,7 @@ class UltimateStabilityManager {
         } catch (e) { }
       });
       page.on('close', () => {
-        console.log(`\x1b[31m[${label}] 視窗已關閉 | 最後步驟: ${this.lastStep}\x1b[0m`);
+        if (this.loggingActive) console.log(`\x1b[31m[${label}] 視窗已關閉 | 最後步驟: ${this.lastStep}\x1b[0m`);
       });
     } catch (e) { }
   }
@@ -163,7 +183,7 @@ class UltimateStabilityManager {
           const tokenMatch = text.match(/"token":"([^"]+)"/);
           if (tokenMatch && tokenMatch[1] !== this.gameApiToken) {
             this.gameApiToken = tokenMatch[1];
-            console.log(`\x1b[32m[GS_DETECT] 🎫 成功捕獲真．遊戲 Token: ${this.gameApiToken.substring(0, 15)}...\x1b[0m`);
+            if (this.loggingActive) console.log(`\x1b[32m[GS_DETECT] 🎫 成功捕獲真．遊戲 Token: ${this.gameApiToken.substring(0, 15)}...\x1b[0m`);
           }
           const hasErrorCode0 = /"error_code":\s*0/.test(text);
           if (hasErrorCode0) {
@@ -172,17 +192,17 @@ class UltimateStabilityManager {
           const isSpinResponse = /"command"\s*:\s*"spin"/.test(text);
           if (isSpinResponse) {
             this.lastSpinResponseAt = Date.now();
-            console.log(`\x1b[32m[GS_DETECT] 🎰 偵測到 Spin 封包回應！\x1b[0m`);
+            if (this.loggingActive) console.log(`\x1b[32m[GS_DETECT] 🎰 偵測到 Spin 封包回應！\x1b[0m`);
 
             // [智慧等待] 偵測 Free Game 狀態
             if (/"get_sub_game"\s*:\s*true/.test(text)) {
               if (!this.isInFreeGame) {
-                console.log(`\x1b[33m[GS_DETECT] 🎰 偵測到進入 Free Game！等待結束中...\x1b[0m`);
+                if (this.loggingActive) console.log(`\x1b[33m[GS_DETECT] 🎰 偵測到進入 Free Game！等待結束中...\x1b[0m`);
                 this.isInFreeGame = true;
               }
             } else if (/"data"\s*:\s*\[\s*\]/.test(text)) {
               if (this.isInFreeGame) {
-                console.log(`\x1b[32m[GS_DETECT] ✨ Free Game 已結束，回到主遊戲。\x1b[0m`);
+                if (this.loggingActive) console.log(`\x1b[32m[GS_DETECT] ✨ Free Game 已結束，回到主遊戲。\x1b[0m`);
                 this.isInFreeGame = false;
               }
             }
@@ -199,7 +219,7 @@ class UltimateStabilityManager {
         } catch (e) { }
       });
       context.on('page', newPage => {
-        console.log(`\x1b[35m[CONTEXT] 偵測到新分頁: ${newPage.url()}\x1b[0m`);
+        if (this.loggingActive) console.log(`\x1b[35m[CONTEXT] 偵測到新分頁: ${newPage.url()}\x1b[0m`);
         this.activeGamePage = newPage;
         this.setupPageListeners(newPage, 'GAME_PAGE');
       });
@@ -244,17 +264,24 @@ class UltimateStabilityManager {
     } catch (e) { }
     return null;
   }
+
+  disableLogging() {
+    this.loggingActive = false;
+    console.log('\x1b[33m[系統] 已停止背景網路日誌輸出。\x1b[0m');
+  }
 }
 
 function setCurrentStep(stepKey) { currentStep = stepKey; }
 function updateStepResult(stepKey, result) { stepResults[stepKey] = result; }
-function getProgress() { return { currentStep, stepResults, totalSteps }; }
+function getProgress() { return { currentStep, stepResults, totalSteps, stopRequested }; }
 function resetProgress() {
   currentStep = null;
   Object.keys(stepResults).forEach(key => delete stepResults[key]);
+  stopRequested = false;
 }
 
 async function checkWebsite(url, viewport = { width: 1366, height: 768 }, selectedGames = [], gaMode = false) {
+  stopRequested = false;
   console.log('--- [DIAG] 目前 steps 的狀態:', typeof steps); // 加入這行
   const userDataDir = path.join(__dirname, '../user_data/sac_isolated');
   // [超級偵察機] 看看 steps 到底抓到了什麼
@@ -290,11 +317,12 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
         // --- 這裡不需要再加 --user-data-dir 了，因為上面第一個參數已經給了 ---
       ]
     });
-
+    activeBrowser = context;
     const page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();
     diag.setupContextListeners(context);
     diag.setupPageListeners(page, 'MAIN_PAGE');
     resetProgress();
+    ensureNotStopped();
 
     // 啟動前清空舊截圖
     await diag.clearScreenshots();
@@ -303,6 +331,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
     diag.logStep('NAVIGATING_TO_SAC');
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     await diag.takeStepScreenshot(page, 'step0-nav', 'success');
+    ensureNotStopped();
 
     // --- [最終解決方案] 登入與狀態判定 ---
     let loginRes = { success: false };
@@ -335,6 +364,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
     updateStepResult('login', loginRes);
     await diag.takeStepScreenshot(page, 'step1-login', loginRes.success ? 'success' : 'fail');
     if (!loginRes.success) throw new Error(loginRes.error);
+    ensureNotStopped();
 
     // 2. Open Game List
     setCurrentStep('openGameList');
@@ -343,6 +373,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
     updateStepResult('openGameList', listRes);
     await diag.takeStepScreenshot(page, 'step2-list', listRes.success ? 'success' : 'fail');
     if (!listRes.success) throw new Error(listRes.error);
+    ensureNotStopped();
 
     // --- 修改後的 323 行起 ---
     // 使用 Promise.all 同時執行「等待新頁面」和「點擊遊戲」
@@ -358,6 +389,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
     await diag.takeStepScreenshot(page, 'step3-launch', launchRes.success ? 'success' : 'fail');
 
     if (!launchRes.success) throw new Error(launchRes.error);
+    ensureNotStopped();
 
     // 將捕捉到的新分頁 (gamePage) 存入 diag，讓後面的步驟可以用它
     diag.activeGamePage = gamePage;
@@ -374,10 +406,12 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
         updateStepResult('checkGameLoad', { success: false, error: err.message });
       }
     }
+    ensureNotStopped();
 
     // [關鍵] 等待遊戲引擎與伺服器連線完全初始化，再開始 Spin 測試
     console.log('--- [DIAG] 等待 8 秒讓遊戲引擎完全就緒... ---');
     await gamePage.waitForTimeout(8000);
+    ensureNotStopped();
 
     // 確認 Step 4 是否成功，作為 Step 5、6 的執行前提
     const gameLoadSucceeded = stepResults['checkGameLoad']?.success === true;
@@ -396,6 +430,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
         updateStepResult('checkSpaceSpin', { success: false, error: err.message });
       }
     }
+    ensureNotStopped();
 
     // --- [STEP 6] Game Operation (Auto Spin, etc) ---
     setCurrentStep('gameOperation');
@@ -412,6 +447,7 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
         updateStepResult('gameOperation', { success: false, error: err.message });
       }
     }
+    ensureNotStopped();
 
     // --- [STEP 7] Start Streaming ---
     setCurrentStep('startStreaming');
@@ -422,26 +458,38 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
       console.error('--- [ERROR] Start Streaming 失敗:', err.message);
       updateStepResult('startStreaming', { success: false, error: err.message });
     }
+    ensureNotStopped();
 
     console.log('--- [DIAG] 測試流程結束 ---');
     // 等待前端輪詢有機會抓到最後一個步驟的結果，再回傳 HTTP response
     await new Promise(r => setTimeout(r, 2500));
 
-    // 提示使用者決定後續操作
-    const decision = await askToContinue();
-    if (decision === 'continue') {
-      console.log('\x1b[32m[DIAG] 繼續模式：瀏覽器保持開啟 60 秒...\x1b[0m');
-      await new Promise(r => setTimeout(r, 60000));
+    // 進入互動模式前關閉背景日誌
+    diag.disableLogging();
+
+    // 💡 測試完成，自動關閉
+    if (!stopRequested) {
+      console.log('\x1b[32m[DIAG] 測試完成，瀏覽器將在 3 秒後自動關閉...\x1b[0m');
+      await new Promise(r => setTimeout(r, 3000));
     }
 
     return results;
 
 } catch (err) {
-        console.error('--- [ERROR] 主流程發生錯誤:', err.message);
-        return { success: false, error: err.message };
-    } finally {
-        setCurrentStep(null);
+    if (stopRequested && (err.name === 'StopRequestedError' || err.message.includes('closed'))) {
+      console.log('✅ [SAC] 測試已成功中斷');
+      return { success: false, stopped: true };
     }
+    console.error('--- [ERROR] 主流程發生錯誤:', err.message);
+    return { success: false, error: err.message };
+} finally {
+    if (activeBrowser) {
+        await activeBrowser.close();
+    }
+    setCurrentStep(null);
+    activeBrowser = null;
+    stopRequested = false;
+}
 } // <--- 確保這一個括號在最左邊，徹底關閉 checkWebsite
 
 // ==========================================
@@ -464,7 +512,8 @@ module.exports = {
     setCurrentStep,
     updateStepResult,
     resetProgress,
-    getGameList
+    getGameList,
+    stopTest
 };
 
 

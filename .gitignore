@@ -1,51 +1,29 @@
-# 依賴套件
+# 依賴模組
 node_modules/
-package-lock.json
 
-# 環境變數
-.env
-.env.local
-.env.*.local
-
-# 日誌
+# 日誌與測試暫存檔
 logs/
+temp_profiles/
 debug/
-*.log
+user_data/
+AI coding data/
 
-# 備份檔案
-*.backup
-*_old.js
-*_demo.js
-*_fix.js
+# 壓縮與執行檔
+*.tar
+*.tar.gz
+*.exe
+*.zip
+*.rar
 
-# 測試結果
-test-results/
-playwright-report/
-test-screenshots/
-
-# 作業系統
+# 系統檔案
 .DS_Store
 Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-!.vscode/
-!.vscode/launch.json
-!.vscode/tasks.json
 
 # 臨時檔案
 tmp/
 temp/
-user_data/
 
-
-
-
-
-
-
-*.tar
+# VS Code 設定 (保留您原本想留的部分)
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
