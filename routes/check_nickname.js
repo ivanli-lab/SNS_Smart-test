@@ -8,7 +8,7 @@ if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir, { recursive: true });
 
 let currentStep2 = null;
 const stepResults2 = {};
-const totalSteps2 = 7;
+const totalSteps2 = 14;
 let activeBrowser = null;
 let stopRequested = false;
 let isRunning = false;
@@ -292,20 +292,24 @@ async function checkWebsite2(url) {
 
         let nicknameConfirmed = false;
         console.log('[Step 2] Waiting for nickname confirm dialog...');
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 8; i++) {
             ensureNotStopped();
-            const ok = await smartClick(page, /Confirm|確認|OK/i, 'Nickname OK');
+            const ok = await smartClick(page, /Confirm|確認|OK|I understand/i, 'Nickname OK');
             if (ok) {
                 nicknameConfirmed = true;
+                console.log('[Step 2] Clicked OK/Confirm button.');
                 break;
             }
-            // 檢查是否其實已經進入 Lobby 了 (如果已經看得到餘額或頭像)
-            const alreadyInLobby = await page.evaluate(() => {
+            // 檢查是否其實已經進入 Lobby 了 (使用您提供的 data-info 屬性偵測)
+            const lobbyState = await page.evaluate(() => {
+                const hasDataInfo = !!document.querySelector('div[data-info="true"]');
                 const text = document.body.innerText;
-                return text.includes('Balance') || text.includes('Streaming Now');
+                const hasBalance = text.includes('Balance') || !!document.querySelector('[class*="balance"]');
+                return hasDataInfo || hasBalance;
             });
-            if (alreadyInLobby) {
-                console.log('[Step 2] Nickname dialog not found, but already in Lobby. Skipping...');
+            
+            if (lobbyState) {
+                console.log('[Step 2] Lobby features (data-info/Balance) detected. Skipping...');
                 nicknameConfirmed = true;
                 break;
             }
@@ -318,106 +322,65 @@ async function checkWebsite2(url) {
         setCurrentStep2('tcNicknameChange');
         console.log('[Step 2] Changing nickname...');
 
-        // 點擊大頭貼前再次確保翻譯泡泡消失
         await dismissTranslateBar(page);
-        await page.waitForTimeout(1000);
+        await page.waitForTimeout(1500);
         ensureNotStopped();
 
-        const viewport = page.viewportSize() || { width: 1280, height: 720 };
-
-        // 🚀 嘗試多次開啟暱稱視窗，並使用多點打擊
+        // 🚀 嘗試開啟暱稱視窗
         let dialogOpened = false;
-        const nicknameSelector = 'input[type="text"], input[placeholder*="nickname" i], input[placeholder*="暱稱" i]';
         let inputLocator = null;
-
-        for (let attempt = 0; attempt < 5; attempt++) {
+        const nicknameSelector = 'input[type="text"], input[placeholder*="nickname" i], input[placeholder*="暱稱" i], #nickname-input';
+        
+        for (let attempt = 0; attempt < 8; attempt++) {
             ensureNotStopped();
             console.log(`[Step 2] Attempting to open profile settings (Try ${attempt + 1})...`);
             
             await dismissTranslateBar(page).catch(() => {});
-            await page.keyboard.press('Escape').catch(() => {});
+            if (attempt > 0) await page.keyboard.press('Escape').catch(() => {});
             await page.waitForTimeout(1000);
 
-            // 方法 A: 嘗試搜尋「暱稱文字」並點擊 (這是最準確的)
-            let iconFound = false;
-            const currentName = await page.evaluate(() => {
-                // 尋找看起來像暱稱的文字（通常在 Balance 旁邊）
-                const bodyText = document.body.innerText;
-                const match = bodyText.match(/([a-zA-Z0-9]{4,})\s+Balance/);
-                return match ? match[1] : null;
-            });
-
+            // 【主力方法】使用您提供的 data-info="true" 進行點擊
+            let clicked = false;
             const frames = page.frames();
             for (const frame of frames) {
-                // 如果有抓到當前名稱，優先點擊該文字
-                if (currentName) {
-                    const nameLoc = frame.locator(`text="${currentName}"`).first();
-                    if (await nameLoc.isVisible().catch(() => false)) {
-                        await nameLoc.click({ force: true });
-                        iconFound = true;
-                        console.log(`[Step 2] Success: Clicked nickname text "${currentName}"`);
-                        break;
-                    }
+                const infoBtn = frame.locator('div[data-info="true"]').first();
+                if (await infoBtn.isVisible().catch(() => false)) {
+                    await infoBtn.click({ force: true });
+                    console.log('[Step 2] Success: Clicked div[data-info="true"]');
+                    clicked = true;
+                    break;
                 }
-
-                // 方法 B: 智慧掃描所有框架中的右上角頭像元素
-                const found = await frame.evaluate((width) => {
-                    const els = Array.from(document.querySelectorAll('div, span, img, a, button, i'));
-                    const target = els.find(el => {
-                        const r = el.getBoundingClientRect();
-                        const style = window.getComputedStyle(el);
-                        // 擴大偵測範圍：右上角寬度 45% 的區域
-                        const isTopRight = r.top < 120 && r.left > width * 0.55; 
-                        const isVisible = r.width > 0 && r.height > 0 && style.display !== 'none';
-                        // 包含頭像關鍵字或是很短的文字 (可能是暱稱)
-                        const className = (el.className || '').toLowerCase();
-                        const hasPotential = style.backgroundImage !== 'none' || el.tagName === 'IMG' || className.includes('avatar') || className.includes('user') || el.innerText.length < 15;
-                        return isTopRight && isVisible && hasPotential;
-                    });
-                    if (target) { target.click(); return true; }
-                    return false;
-                }, viewport.width).catch(() => false);
-                if (found) { iconFound = true; break; }
-            }
-
-            if (iconFound) {
-                console.log('[Step 2] Profile icon clicked.');
-                await page.waitForTimeout(1500);
-            } else {
-                // 方法 C: 區域座標地毯式點擊 (針對畫布版)
-                console.log('[Step 2] Profile icon not found, using coordinate grid click...');
-                const points = [
-                    {x: viewport.width - 50, y: 35},
-                    {x: viewport.width - 100, y: 35},
-                    {x: viewport.width - 150, y: 35},
-                    {x: viewport.width - 200, y: 35}
-                ];
-                for (const p of points) {
-                    await page.mouse.click(p.x, p.y);
-                    await page.waitForTimeout(400);
-                    inputLocator = await findInputInFrames(page, nicknameSelector);
-                    if (inputLocator) break;
+                
+                // 備案：點擊包含 "Balance" 文字的 span 或其父層
+                const balanceLoc = frame.locator('span:has-text("Balance")').first();
+                if (await balanceLoc.isVisible().catch(() => false)) {
+                    await balanceLoc.click({ force: true });
+                    console.log('[Step 2] Success: Clicked Balance span');
+                    clicked = true;
+                    break;
                 }
             }
 
+            if (!clicked) {
+                // 最後備案：座標點擊 (根據 1366x768 比例)
+                const vp = page.viewportSize() || { width: 1366, height: 768 };
+                await page.mouse.click(vp.width - 150, 40);
+                console.log('[Step 2] Using fallback coordinate click.');
+            }
+
+            // 檢查輸入框是否出現
             inputLocator = await findInputInFrames(page, nicknameSelector);
-            if (inputLocator) {
+            if (inputLocator && await inputLocator.isVisible({ timeout: 2500 }).catch(() => false)) {
                 dialogOpened = true;
+                console.log('[Step 2] Nickname input found!');
                 break;
             }
-
-            if (await inputLocator.isVisible({ timeout: 2500 }).catch(() => false)) {
-                dialogOpened = true;
-                break;
-            }
-
-            // 備案 C: 極限座標點擊 (針對畫布版)
-            console.log('[Step 3] Trying extreme coordinate click (width-100)...');
-            await page.mouse.click(viewport.width - 40, 40);
-            await page.waitForTimeout(1000);
-            if (await inputLocator.isVisible({ timeout: 1000 }).catch(() => false)) {
-                dialogOpened = true;
-                break;
+            
+            // 如果最後一次嘗試還是失敗，截圖診斷
+            if (attempt === 7 && !dialogOpened) {
+                const debugPath = `public/screenshots/lobby/step3-debug-${Date.now()}.png`;
+                await page.screenshot({ path: debugPath }).catch(() => {});
+                console.log(`[Step 3] Diagnostic screenshot saved to: ${debugPath}`);
             }
         }
 
@@ -428,43 +391,73 @@ async function checkWebsite2(url) {
 
             for (let i = 0; i < 15; i++) {
                 ensureNotStopped();
-                // 輸入暱稱
-                await inputLocator.click({ force: true });
-                await page.keyboard.press('Meta+A').catch(() => page.keyboard.press('Control+A'));
-                await page.keyboard.press('Backspace');
-                await inputLocator.fill(newName);
+                // 🚀 更加擬人的輸入方式
+                console.log(`[Step 2] Attempting to set nickname: ${newName} (Try ${i + 1})`);
+                
+                try {
+                    await inputLocator.focus();
+                    await inputLocator.click({ clickCount: 3 }); // 強力全選
+                    await page.keyboard.press('Backspace');
+                    await page.waitForTimeout(500);
+                    await inputLocator.type(newName, { delay: 50 });
+                    await page.waitForTimeout(500);
+                    
+                    // 檢查值是否正確輸入
+                    const val = await inputLocator.inputValue().catch(() => '');
+                    if (val !== newName) {
+                        await inputLocator.fill(newName); // 備案：強制 Fill
+                    }
+                } catch (e) {
+                    console.log(`[Step 2] Input error: ${e.message}, trying direct fill...`);
+                    await inputLocator.fill(newName).catch(() => {});
+                }
+
                 await page.waitForTimeout(1000);
 
-                // 點擊確認
-                console.log(`[Step 2] Attempting to set nickname: ${newName} (Try ${i + 1})`);
-                await page.keyboard.press('Enter');
-                await smartClick(page, /Confirm|Save|確認|儲存|SAVE/i, 'Nick Confirm');
-                await page.waitForTimeout(2000);
+                // 點擊確認 (擴張選擇器範圍)
+                let confirmed = false;
+                const confirmBtn = page.locator('button[class*="confirmButton"], button:has-text("Confirm"), button:has-text("確認"), button:has-text("Save")').first();
+                
+                if (await confirmBtn.isVisible().catch(() => false) && await confirmBtn.isEnabled().catch(() => false)) {
+                    await confirmBtn.click({ force: true });
+                    confirmed = true;
+                    console.log('[Step 2] Clicked Confirm button.');
+                } else {
+                    // 備案：Enter 鍵
+                    await page.keyboard.press('Enter');
+                    console.log('[Step 2] Pressed Enter as fallback.');
+                    confirmed = true;
+                }
+                
+                await page.waitForTimeout(3000);
 
-                // 檢查是否出現「名稱已占用」錯誤
+                // 檢查是否出現「名稱已占用」或其他錯誤提示
                 const errorMsg = await page.evaluate(() => {
-                    const els = Array.from(document.querySelectorAll('div, span, p'));
+                    const els = Array.from(document.querySelectorAll('div, span, p, .error, .message'));
                     return els.find(el => {
                         const txt = (el.innerText || '').toLowerCase();
-                        return txt.includes('already taken') || txt.includes('名稱已被使用') || txt.includes('different name');
+                        return (txt.includes('already taken') || txt.includes('名稱已被使用') || txt.includes('different name') || txt.includes('error')) 
+                               && el.offsetWidth > 0;
                     })?.innerText || null;
                 });
 
                 if (errorMsg) {
-                    console.log(`[Step 2] ⚠️ Nickname "${newName}" is already taken. Generating new one...`);
+                    console.log(`[Step 2] ⚠️ Server message: "${errorMsg}". Generating new name...`);
                     newName = generateRandomNickname();
                     continue;
                 }
 
-                // 檢查輸入框是否消失 (代表成功)
+                // 檢查輸入框是否消失 (代表成功關閉彈窗)
                 const isStillThere = await inputLocator.isVisible().catch(() => false);
                 if (!isStillThere) {
-                    console.log(`[Step 2] ✅ Success! Nickname set to: ${newName}`);
+                    console.log(`[Step 2] ✅ Success! Nickname window closed.`);
                     break;
                 }
 
-                console.log(`[Step 2] Dialog still visible, retrying...`);
+                console.log(`[Step 2] Dialog still visible, retrying with Tab/Enter...`);
                 await page.keyboard.press('Tab');
+                await page.keyboard.press('Enter');
+                await page.waitForTimeout(1000);
             }
         } else {
             console.log('[Step 2] FAIL - Nickname input dialog not found.');
@@ -485,12 +478,49 @@ async function checkWebsite2(url) {
         await page.keyboard.press('Escape').catch(() => { });
         await smartClick(page, /Confirm|Cancel|Close|確認|關閉|CLOSE/i, 'Setting Close');
 
-        // 4️⃣ Manual Interaction
+        // 4️⃣ Automated Streamer Card Click
         setCurrentStep2('manualInteraction');
-        console.log('[Step 4] AWAITING MANUAL STREAMER CARD CLICK...');
-        updateStepResult2('manualInteraction', { success: false, waiting: true, message: '請點擊直播主卡片' });
+        console.log('[Step 4] Attempting to automate streamer card click...');
+        updateStepResult2('manualInteraction', { success: false, message: '正在自動尋找並點擊直播主卡片...' });
 
-        const [newPage] = await Promise.all([context.waitForEvent('page', { timeout: 120000 })]);
+        // 確保大廳列表已加載
+        await page.waitForSelector('div[data-cover="true"]', { timeout: 20000 }).catch(() => {
+            console.log('[Step 4] Warning: data-cover selector not found, attempting fallback...');
+        });
+
+        const clickStreamerCard = async (targetPage) => {
+            // 優先尋找帶有 LIVE 標籤的卡片
+            const cards = await targetPage.locator('div[data-cover="true"]').all();
+            console.log(`[Step 4] Found ${cards.length} streamer cards.`);
+            
+            if (cards.length > 0) {
+                // 嘗試點擊第一個卡片
+                console.log('[Step 4] Clicking the first available streamer card...');
+                await cards[0].click({ force: true });
+                return true;
+            }
+            
+            // 備案：尋找任何看起來像卡片的容器
+            const containers = await targetPage.locator('div[class*="_container_"]').all();
+            for (const container of containers) {
+                if (await container.isVisible()) {
+                    console.log('[Step 4] Clicking container fallback...');
+                    await container.click({ force: true });
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        const [newPage] = await Promise.all([
+            context.waitForEvent('page', { timeout: 30000 }),
+            clickStreamerCard(page)
+        ]).catch(async (err) => {
+            console.log('[Step 4] Automated click/open failed, falling back to manual wait...');
+            updateStepResult2('manualInteraction', { success: false, waiting: true, message: '自動點擊失敗，請點擊直播主卡片' });
+            return [await context.waitForEvent('page', { timeout: 90000 })];
+        });
+
         ensureNotStopped();
         
         console.log('[Step 3] 偵測到新視窗開啟，正在等待初始化...');
@@ -537,6 +567,14 @@ async function checkWebsite2(url) {
                         
                         // 1. 勾選 "Don't show this again"
                         await frame.evaluate(() => {
+                            // 優先使用 ID 定位
+                            const cb = document.querySelector('#dontShowAgain');
+                            if (cb) {
+                                if (!cb.checked) cb.click();
+                                return;
+                            }
+                            
+                            // 備案：文字搜尋
                             const labels = Array.from(document.querySelectorAll('label, div, span, p'));
                             const checkboxText = labels.find(el => {
                                 const t = (el.innerText || '').toLowerCase();
@@ -544,23 +582,30 @@ async function checkWebsite2(url) {
                             });
                             
                             if (checkboxText) {
-                                const cb = checkboxText.querySelector('input[type="checkbox"]') || 
-                                           checkboxText.parentElement.querySelector('input[type="checkbox"]') ||
-                                           document.querySelector('input[type="checkbox"]');
-                                if (cb && !cb.checked) cb.click();
+                                const cbAlt = checkboxText.querySelector('input[type="checkbox"]') || 
+                                              checkboxText.parentElement.querySelector('input[type="checkbox"]') ||
+                                              document.querySelector('input[type="checkbox"]');
+                                if (cbAlt && !cbAlt.checked) cbAlt.click();
                             }
                         }).catch(() => {});
                         
                         await targetPage.waitForTimeout(1000);
 
-                        // 2. 點擊 START PLAYING
-                        const clicked = await smartClick(frame, /START PLAYING|START|PLAY|開始|開始遊戲/i, 'Start Button');
-                        if (clicked) return true;
-
-                        // 備案：座標點擊 (針對 Canvas 內部的按鈕)
+                        // 2. 點擊 START PLAYING 按鈕
+                        // 優先使用精確文字匹配
+                        const clicked = await smartClick(frame, /^START PLAYING$/i, 'Start Button');
+                        if (!clicked) {
+                            // 備案：模糊匹配
+                            await smartClick(frame, /START PLAYING|START|PLAY|開始|開始遊戲/i, 'Start Button (Fuzzy)');
+                        }
+                        
+                        // 備案：座標點擊 (針對 Canvas 或特殊渲染)
                         const btnPos = await frame.evaluate(() => {
                             const btns = Array.from(document.querySelectorAll('button, div[role="button"], .startButton, .btn-start'));
-                            const bigBtn = btns.find(b => b.offsetWidth > 50 && b.offsetHeight > 20);
+                            const bigBtn = btns.find(b => {
+                                const t = (b.innerText || '').toUpperCase();
+                                return t.includes('PLAYING') && b.offsetWidth > 50;
+                            });
                             if (bigBtn) { 
                                 const r = bigBtn.getBoundingClientRect(); 
                                 return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; 
@@ -578,9 +623,10 @@ async function checkWebsite2(url) {
                                 }
                             }
                             await targetPage.mouse.click(finalX, finalY);
-                            console.log(`[Step 4] 透過座標點擊按鈕: (${finalX}, ${finalY})`);
+                            console.log(`[Step 5] 透過座標點擊按鈕: (${finalX}, ${finalY})`);
                             return true;
                         }
+                        return clicked;
                     }
                 } catch (e) {}
             }
@@ -843,7 +889,728 @@ async function checkWebsite2(url) {
             console.error('[Step 8] Game History Check error:', err.message);
             updateStepResult2('gameHistoryCheck', { success: false, error: err.message });
         }
+
+        // =========================================================================
+        // Step 9: 聊天室訊息輸入翻譯功能確認
+        // =========================================================================
+        try {
+            setCurrentStep2('chatTranslationCheck');
+            console.log('[Step 9] Testing Chat Translation Check...');
+            ensureNotStopped();
+
+            // Step.1 點擊右上方的『地球』UI icon (通常在第一個, data-control="true" 容器內)
+            const scanAndClickGlobeBtn = async (targetPage) => {
+                const frames = targetPage.frames();
+                for (const frame of frames) {
+                    try {
+                        const clicked = await frame.evaluate(() => {
+                            const container = document.querySelector('div[data-control="true"], .hstack');
+                            if (container) {
+                                const svgs = Array.from(container.querySelectorAll('svg'));
+                                if (svgs.length >= 1) {
+                                    // 地球 icon 通常是第一個
+                                    svgs[0].parentElement.click();
+                                    return true;
+                                }
+                            }
+                            return false;
+                        });
+                        if (clicked) return true;
+                    } catch (e) { }
+                }
+                return false;
+            };
+
+            await scanAndClickGlobeBtn(newPage);
+            
+            // Step.2 勾選『日本語』
+            console.log('[Step 9] 正在尋找並點擊『日本語』語系...');
+            let langSelected = false;
+            for (let i = 0; i < 5; i++) {
+                langSelected = await newPage.evaluate(() => {
+                    const items = Array.from(document.querySelectorAll('div[data-item="true"]'));
+                    const target = items.find(el => el.innerText.includes('日本語'));
+                    if (target) {
+                        target.click();
+                        return true;
+                    }
+                    return false;
+                });
+                if (langSelected) break;
+                await newPage.waitForTimeout(1000);
+            }
+
+            if (!langSelected) {
+                // 備案：使用 span[data-name="true"] 尋找
+                langSelected = await smartClick(newPage, /日本語/i, 'Japanese Language Option');
+            }
+
+            if (!langSelected) {
+                throw new Error('無法找到或點擊『日本語』語系選項');
+            }
+
+            // 等待語系列表自動關閉
+            await newPage.waitForTimeout(1500);
+
+            // Step.3 點選『訊息輸入框』並輸入文字
+            console.log('[Step 9] 輸入測試訊息: Language test...');
+            const chatInput = newPage.locator('#chat-message-input');
+            if (await chatInput.isVisible({ timeout: 5000 }).catch(() => false)) {
+                await chatInput.click();
+                await chatInput.fill('Language test');
+                await newPage.keyboard.press('Enter');
+                // 🚀 追加等待時間，以便目視確認
+                await newPage.waitForTimeout(3000);
+            } else {
+                throw new Error('找不到聊天室訊息輸入框 (#chat-message-input)');
+            }
+
+            // Step.4 驗證翻譯結果 (等待翻譯處理時間)
+            console.log('[Step 9] 等待翻譯結果出現...');
+            let translationSuccess = false;
+            for (let i = 0; i < 10; i++) {
+                const content = await newPage.evaluate(() => {
+                    const messages = Array.from(document.querySelectorAll('p[data-original="true"], p[data-content="true"]'));
+                    // 檢查是否有包含日文字元 (語学テスト 或其他日文)
+                    return messages.some(p => /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(p.innerText));
+                });
+                if (content) {
+                    translationSuccess = true;
+                    console.log('[Step 9] ✅ 偵測到日文翻譯內容！');
+                    break;
+                }
+                await newPage.waitForTimeout(1500);
+            }
+
+            updateStepResult2('chatTranslationCheck', { 
+                success: translationSuccess, 
+                message: translationSuccess ? '成功確認翻譯功能' : '未偵測到翻譯後的日文訊息' 
+            });
+
+        } catch (err) {
+            console.error('[Step 9] Chat Translation Check error:', err.message);
+            updateStepResult2('chatTranslationCheck', { success: false, error: err.message });
+        }
+
+        // =========================================================================
+        // Step 10: 印尼語訊息翻譯確認 (Bahasa Indonesia)
+        // =========================================================================
+        try {
+            setCurrentStep2('chatTranslationCheckID');
+            console.log('[Step 10] Testing Indonesian Translation Check...');
+            ensureNotStopped();
+
+            // Step.1 點擊地球 icon
+            const scanAndClickGlobeBtn = async (targetPage) => {
+                const frames = targetPage.frames();
+                for (const frame of frames) {
+                    try {
+                        const clicked = await frame.evaluate(() => {
+                            const container = document.querySelector('div[data-control="true"], .hstack');
+                            if (container) {
+                                const svgs = Array.from(container.querySelectorAll('svg'));
+                                if (svgs.length >= 1) {
+                                    svgs[0].parentElement.click();
+                                    return true;
+                                }
+                            }
+                            return false;
+                        });
+                        if (clicked) return true;
+                    } catch (e) { }
+                }
+                return false;
+            };
+            await scanAndClickGlobeBtn(newPage);
+            
+            // Step.2 勾選『Bahasa Indonesia』
+            console.log('[Step 10] 正在點擊『Bahasa Indonesia』...');
+            let langSelected = await newPage.evaluate(() => {
+                const items = Array.from(document.querySelectorAll('div[data-item="true"]'));
+                const target = items.find(el => el.innerText.includes('Bahasa Indonesia'));
+                if (target) { target.click(); return true; }
+                return false;
+            });
+
+            if (!langSelected) {
+                langSelected = await smartClick(newPage, /Bahasa Indonesia/i, 'Indonesian Language Option');
+            }
+
+            if (!langSelected) throw new Error('無法找到印尼語選項');
+            await newPage.waitForTimeout(1500);
+
+            // Step.3 輸入訊息
+            const chatInput = newPage.locator('#chat-message-input');
+            await chatInput.click();
+            await chatInput.fill('Language test');
+            await newPage.keyboard.press('Enter');
+            await newPage.waitForTimeout(3000); // 目視確認
+
+            // Step.4 驗證
+            console.log('[Step 10] 等待印尼語翻譯...');
+            let translationSuccess = false;
+            for (let i = 0; i < 10; i++) {
+                const content = await newPage.evaluate(() => {
+                    const messages = Array.from(document.querySelectorAll('p[data-original="true"]'));
+                    // 印尼語使用拉丁字母，檢查是否有內容且非原文字串
+                    return messages.some(p => p.innerText.length > 0 && p.innerText.toLowerCase() !== 'language test');
+                });
+                if (content) { translationSuccess = true; break; }
+                await newPage.waitForTimeout(1500);
+            }
+
+            updateStepResult2('chatTranslationCheckID', { 
+                success: translationSuccess, 
+                message: translationSuccess ? '成功確認印尼語翻譯' : '未偵測到翻譯內容' 
+            });
+        } catch (err) {
+            console.error('[Step 10] Indonesian error:', err.message);
+            updateStepResult2('chatTranslationCheckID', { success: false, error: err.message });
+        }
+
+        // =========================================================================
+        // Step 11: 泰語訊息翻譯確認 (ภาษาไทย)
+        // =========================================================================
+        try {
+            setCurrentStep2('chatTranslationCheckTH');
+            console.log('[Step 11] Testing Thai Translation Check...');
+            ensureNotStopped();
+
+            // Step.1 點擊地球 icon
+            const scanAndClickGlobeBtn = async (targetPage) => {
+                const frames = targetPage.frames();
+                for (const frame of frames) {
+                    try {
+                        const clicked = await frame.evaluate(() => {
+                            const container = document.querySelector('div[data-control="true"], .hstack');
+                            if (container) {
+                                const svgs = Array.from(container.querySelectorAll('svg'));
+                                if (svgs.length >= 1) {
+                                    svgs[0].parentElement.click();
+                                    return true;
+                                }
+                            }
+                            return false;
+                        });
+                        if (clicked) return true;
+                    } catch (e) { }
+                }
+                return false;
+            };
+            await scanAndClickGlobeBtn(newPage);
+            
+            // Step.2 勾選『ภาษาไทย』
+            console.log('[Step 11] 正在點擊『ภาษาไทย』...');
+            let langSelected = await newPage.evaluate(() => {
+                const items = Array.from(document.querySelectorAll('div[data-item="true"]'));
+                const target = items.find(el => el.innerText.includes('ภาษาไทย') || el.innerText.includes('Thai'));
+                if (target) { target.click(); return true; }
+                return false;
+            });
+
+            if (!langSelected) {
+                langSelected = await smartClick(newPage, /ภาษาไทย|Thai/i, 'Thai Language Option');
+            }
+
+            if (!langSelected) throw new Error('無法找到泰語選項');
+            await newPage.waitForTimeout(1500);
+
+            // Step.3 輸入訊息
+            const chatInput = newPage.locator('#chat-message-input');
+            await chatInput.click();
+            await chatInput.fill('Language test');
+            await newPage.keyboard.press('Enter');
+            await newPage.waitForTimeout(3000); // 目視確認
+
+            // Step.4 驗證
+            console.log('[Step 11] 等待泰語翻譯...');
+            let translationSuccess = false;
+            for (let i = 0; i < 10; i++) {
+                const content = await newPage.evaluate(() => {
+                    const messages = Array.from(document.querySelectorAll('p[data-original="true"]'));
+                    // 檢查是否包含泰文字元 (U+0E00 到 U+0E7F)
+                    return messages.some(p => /[\u0e00-\u0e7f]/.test(p.innerText));
+                });
+                if (content) { translationSuccess = true; break; }
+                await newPage.waitForTimeout(1500);
+            }
+
+            updateStepResult2('chatTranslationCheckTH', { 
+                success: translationSuccess, 
+                message: translationSuccess ? '成功確認泰語翻譯' : '未偵測到泰語翻譯' 
+            });
+        } catch (err) {
+            console.error('[Step 11] Thai error:', err.message);
+            updateStepResult2('chatTranslationCheckTH', { success: false, error: err.message });
+        }
         
+        // =========================================================================
+        // Step 12: Bet value 選取功能確認 (優化版)
+        // =========================================================================
+        try {
+            setCurrentStep2('betValueCheck');
+            console.log('[Step 12] Testing Bet Value Selection Check (Refined)...');
+            ensureNotStopped();
+
+            const betControlSelector = 'div[data-bet-value-control="true"]';
+            const betDisplaySelector = 'div[data-text="true"]';
+
+            const findBetButton = async (targetPage, textOrIndex) => {
+                const frames = targetPage.frames();
+                for (const frame of frames) {
+                    let btn;
+                    if (typeof textOrIndex === 'string') {
+                        btn = frame.locator(`${betControlSelector} button:has-text("${textOrIndex}")`).first();
+                    } else {
+                        btn = frame.locator(`${betControlSelector} button`).nth(textOrIndex);
+                    }
+                    if (await btn.isVisible().catch(() => false)) return btn;
+                }
+                return null;
+            };
+
+            const getBetValue = async (targetPage) => {
+                const frames = targetPage.frames();
+                for (const frame of frames) {
+                    const display = frame.locator(betDisplaySelector).first();
+                    if (await display.isVisible().catch(() => false)) {
+                        const val = await display.evaluate(el => {
+                            const spans = el.querySelectorAll('span');
+                            return spans.length >= 2 ? spans[1].innerText.replace(/,/g, '') : null;
+                        });
+                        if (val) return parseInt(val);
+                    }
+                }
+                return null;
+            };
+
+            const isBtnDisabled = async (btn) => {
+                if (!btn) return false;
+                return await btn.isDisabled().catch(() => false) || 
+                       await btn.evaluate(el => el.hasAttribute('disabled') || el.classList.contains('disabled'));
+            };
+
+            // 1. 先前往起點 MIN
+            console.log('[Step 12] Moving to MIN...');
+            const minBtn = await findBetButton(newPage, 'MIN');
+            if (!minBtn) throw new Error('找不到 MIN 按鈕');
+            await minBtn.click({ force: true });
+            await newPage.waitForTimeout(2000);
+            
+            let currentVal = await getBetValue(newPage);
+            console.log(`[Step 12] Start Value (MIN): ${currentVal}`);
+            if (currentVal !== 200) throw new Error(`起點數值不符 (預期 200): ${currentVal}`);
+
+            // 2. 向上遞增至 MAX
+            console.log('[Step 12] Phase 1: Climbing up to MAX...');
+            const plusBtn = await findBetButton(newPage, 2); // 第 3 個按鈕是 Plus
+            const maxBtn = await findBetButton(newPage, 'MAX');
+            if (!plusBtn || !maxBtn) throw new Error('找不到 Plus 或 MAX 按鈕');
+
+            for (let i = 1; i <= 35; i++) {
+                ensureNotStopped();
+                await plusBtn.click({ force: true });
+                await newPage.waitForTimeout(1000);
+                let newVal = await getBetValue(newPage);
+                console.log(`[Step 12] [Up] Plus x${i}: ${currentVal} -> ${newVal}`);
+                if (newVal <= currentVal && newVal !== 3000000) {
+                    throw new Error(`第 ${i} 次點擊 Plus 數值未遞增: ${newVal}`);
+                }
+                currentVal = newVal;
+                if (currentVal === 3000000) break;
+            }
+
+            // 確認 MAX 邊界狀態
+            const plusDisabled = await isBtnDisabled(plusBtn);
+            const maxDisabled = await isBtnDisabled(maxBtn);
+            if (currentVal !== 3000000 || !plusDisabled || !maxDisabled) {
+                throw new Error(`MAX 邊界校驗失敗: Val=${currentVal}, PlusDisabled=${plusDisabled}, MaxDisabled=${maxDisabled}`);
+            }
+            console.log('[Step 12] MAX Boundary OK. Starting reverse sweep...');
+            await newPage.waitForTimeout(2000);
+
+            // 3. 向下遞減回 MIN
+            console.log('[Step 12] Phase 2: Descending back to MIN...');
+            const minusBtn = await findBetButton(newPage, 1); // 第 2 個按鈕是 Minus
+            if (!minusBtn) throw new Error('找不到 Minus 按鈕');
+
+            for (let i = 1; i <= 35; i++) {
+                ensureNotStopped();
+                await minusBtn.click({ force: true });
+                await newPage.waitForTimeout(1000);
+                let newVal = await getBetValue(newPage);
+                console.log(`[Step 12] [Down] Minus x${i}: ${currentVal} -> ${newVal}`);
+                if (newVal >= currentVal && newVal !== 200) {
+                    throw new Error(`第 ${i} 次點擊 Minus 數值未遞減: ${newVal}`);
+                }
+                currentVal = newVal;
+                if (currentVal === 200) break;
+            }
+
+            // 確認 MIN 邊界狀態
+            const minusDisabled = await isBtnDisabled(minusBtn);
+            const minDisabledFinal = await isBtnDisabled(minBtn);
+            const success = currentVal === 200 && minusDisabled && minDisabledFinal;
+
+            updateStepResult2('betValueCheck', { 
+                success, 
+                message: success ? 'Bet value 雙向遞增遞減與邊界禁用功能確認成功' : 
+                                   `Fail: Val=${currentVal}, MinusDisabled=${minusDisabled}, MinDisabled=${minDisabledFinal}`
+            });
+
+        } catch (err) {
+            console.error('[Step 12] Bet Value Check error:', err.message);
+            updateStepResult2('betValueCheck', { success: false, error: err.message });
+        }
+
+        // =========================================================================
+        // Step 13: Spin Round time 選取功能確認
+        // =========================================================================
+        try {
+            setCurrentStep2('spinRoundCheck');
+            console.log('[Step 13] Testing Spin Round Time Selection...');
+            ensureNotStopped();
+
+            const spinControlSelector = 'div[class*="_container_"]'; // Spin Round 控制區
+
+            // 從 Spin Round 數值顯示框出發，定位相鄰的 +/- 按鈕
+            const findSpinControls = async (targetPage) => {
+                const frames = targetPage.frames();
+                for (const frame of frames) {
+                    // Spin Round 顯示區為第 2 個 data-text="true"
+                    const displays = await frame.locator('div[data-text="true"]').all();
+                    if (displays.length < 2) continue;
+
+                    const spinDisplay = displays[1];
+                    if (!await spinDisplay.isVisible().catch(() => false)) continue;
+
+                    // 取得父層容器，再找相鄰的 button 按鈕
+                    const container = spinDisplay.locator('xpath=..');
+                    const btns = await container.locator('button').all();
+                    if (btns.length < 2) {
+                        // 嘗試往上一層
+                        const parentContainer = spinDisplay.locator('xpath=../..'); 
+                        const parentBtns = await parentContainer.locator('button').all();
+                        if (parentBtns.length >= 2) {
+                            // 第一個 button 是 Minus，最後一個是 Plus
+                            return { minusBtn: parentBtns[0], plusBtn: parentBtns[parentBtns.length - 1], frame };
+                        }
+                        continue;
+                    }
+                    // 第一個 button 是 Minus，最後一個是 Plus
+                    return { minusBtn: btns[0], plusBtn: btns[btns.length - 1], frame };
+                }
+                return null;
+            };
+
+            const getSpinValue = async (targetPage) => {
+                const frames = targetPage.frames();
+                for (const frame of frames) {
+                    const displays = await frame.locator('div[data-text="true"]').all();
+                    if (displays.length >= 2) {
+                        const val = await displays[1].evaluate(el => {
+                            const spans = el.querySelectorAll('span');
+                            return spans.length >= 2 ? spans[1].innerText.replace(/,/g, '') : null;
+                        }).catch(() => null);
+                        if (val && !isNaN(parseInt(val))) return parseInt(val);
+                    }
+                }
+                return null;
+            };
+
+            const isSpinBtnDisabled = async (btn) => {
+                if (!btn) return false;
+                return await btn.isDisabled().catch(() => false) ||
+                       await btn.evaluate(el => el.hasAttribute('disabled') || el.classList.contains('disabled'));
+            };
+
+            // Step 13-1: 連續點擊 Plus (+) 至最大値
+            console.log('[Step 13] Phase 1: Clicking Plus until MAX (1000)...');
+            const spinControls = await findSpinControls(newPage);
+            if (!spinControls) throw new Error('找不到 Spin Round 控制按鈕');
+
+            const { minusBtn: spinMinusBtn, plusBtn: spinPlusBtn } = spinControls;
+
+            let spinVal = await getSpinValue(newPage);
+            console.log(`[Step 13] Initial Spin Round value: ${spinVal}`);
+
+            for (let i = 1; i <= 10; i++) {
+                ensureNotStopped();
+                await spinPlusBtn.click({ force: true });
+                await newPage.waitForTimeout(1000);
+                let newSpinVal = await getSpinValue(newPage);
+                console.log(`[Step 13] [+] x${i}: ${spinVal} -> ${newSpinVal}`);
+                if (newSpinVal <= spinVal && newSpinVal !== 1000) {
+                    throw new Error(`點擊 Plus 數値未遞增: ${newSpinVal}`);
+                }
+                spinVal = newSpinVal;
+                if (spinVal === 1000) break;
+            }
+
+            const spinPlusDisabled = await isSpinBtnDisabled(spinPlusBtn);
+            if (spinVal !== 1000 || !spinPlusDisabled) {
+                throw new Error(`MAX 邊界校驗失敗: Val=${spinVal}, PlusDisabled=${spinPlusDisabled}`);
+            }
+            console.log('[Step 13] MAX (1000) reached. Plus is disabled. Waiting 2s...');
+            await newPage.waitForTimeout(2000);
+
+            // Step 13-2: 連續點擊 Minus (-) 至最小値
+            console.log('[Step 13] Phase 2: Clicking Minus until MIN (20)...');
+
+            for (let i = 1; i <= 10; i++) {
+                ensureNotStopped();
+                await spinMinusBtn.click({ force: true });
+                await newPage.waitForTimeout(1000);
+                let newSpinVal = await getSpinValue(newPage);
+                console.log(`[Step 13] [-] x${i}: ${spinVal} -> ${newSpinVal}`);
+                if (newSpinVal >= spinVal && newSpinVal !== 20) {
+                    throw new Error(`點擊 Minus 數値未遞減: ${newSpinVal}`);
+                }
+                spinVal = newSpinVal;
+                if (spinVal === 20) break;
+            }
+
+            const spinMinusDisabled = await isSpinBtnDisabled(spinMinusBtn);
+            const spinSuccess = spinVal === 20 && spinMinusDisabled;
+            if (spinSuccess) {
+                console.log('[Step 13] MIN (20) reached. Minus is disabled. Waiting 2s...');
+            }
+            await newPage.waitForTimeout(2000);
+
+            updateStepResult2('spinRoundCheck', {
+                success: spinSuccess,
+                message: spinSuccess ? 'Spin Round time 選取功能確認成功' :
+                                       `Fail: Val=${spinVal}, MinusDisabled=${spinMinusDisabled}`
+            });
+
+        } catch (err) {
+            console.error('[Step 13] Spin Round Check error:', err.message);
+            updateStepResult2('spinRoundCheck', { success: false, error: err.message });
+        }
+
+        // =========================================================================
+        // Step 14: Play button with Spin Round 整合功能確認
+        // =========================================================================
+        try {
+            setCurrentStep2('playBtnSpinCheck');
+            console.log('[Step 14] Testing Play Button + Spin Round Integration...');
+            ensureNotStopped();
+
+            // 定位 Play button (data-is-playing 屬性)
+            const findPlayBtn14 = async (targetPage) => {
+                const frames = targetPage.frames();
+                for (const frame of frames) {
+                    const btn = frame.locator('button[data-is-playing]').first();
+                    if (await btn.isVisible().catch(() => false)) return { btn, frame };
+                }
+                return null;
+            };
+
+            // 讀取 Play button 啟動後顯示的倒數數字
+            // 點擊 Play 後，數字顯示於 button[data-is-playing="true"] 的內部或緊鄰容器
+            const getPlayBtnCount14 = async (targetPage) => {
+                const frames = targetPage.frames();
+                for (const frame of frames) {
+                    // 方法1: 直接從 button[data-is-playing="true"] 的所有子元素文字讀取
+                    const playingBtn = frame.locator('button[data-is-playing="true"]').first();
+                    if (await playingBtn.isVisible().catch(() => false)) {
+                        const text = await playingBtn.evaluate(el => {
+                            // 遞迴取得所有文字節點
+                            const getAllText = (node) => {
+                                let text = '';
+                                for (const child of node.childNodes) {
+                                    if (child.nodeType === 3) text += child.textContent;
+                                    else text += getAllText(child);
+                                }
+                                return text.trim();
+                            };
+                            return getAllText(el);
+                        }).catch(() => null);
+                        if (text && !isNaN(parseInt(text))) {
+                            return parseInt(text.replace(/,/g, ''));
+                        }
+                    }
+
+                    // 方法2: 尋找 "Waiting for Next Round" 狀態下的綠色數字圓圈元素
+                    // data-is-playing 按鈕的父層容器中尋找顯示數字的 div
+                    const allBtns = await frame.locator('button[data-is-playing]').all();
+                    for (const btn of allBtns) {
+                        if (!await btn.isVisible().catch(() => false)) continue;
+                        const parent = btn.locator('xpath=..');
+                        const numText = await parent.evaluate(el => {
+                            const divs = Array.from(el.querySelectorAll('div, span'));
+                            for (const d of divs) {
+                                const t = d.innerText?.trim().replace(/,/g, '');
+                                if (t && !isNaN(parseInt(t)) && parseInt(t) >= 20) return t;
+                            }
+                            return null;
+                        }).catch(() => null);
+                        if (numText) return parseInt(numText);
+                    }
+                }
+                return null;
+            };
+
+            // 定位 Spin Round Plus/Minus 按鈕
+            const findStep14SpinControls = async (targetPage) => {
+                const frames = targetPage.frames();
+                for (const frame of frames) {
+                    const displays = await frame.locator('div[data-text="true"]').all();
+                    if (displays.length < 2) continue;
+                    const spinDisplay = displays[1];
+                    if (!await spinDisplay.isVisible().catch(() => false)) continue;
+                    const parentContainer = spinDisplay.locator('xpath=../..'); 
+                    const parentBtns = await parentContainer.locator('button').all();
+                    if (parentBtns.length >= 2) {
+                        return { minusBtn: parentBtns[0], plusBtn: parentBtns[parentBtns.length - 1] };
+                    }
+                    const container = spinDisplay.locator('xpath=..');
+                    const btns = await container.locator('button').all();
+                    if (btns.length >= 2) {
+                        return { minusBtn: btns[0], plusBtn: btns[btns.length - 1] };
+                    }
+                }
+                return null;
+            };
+
+            // 讀取目前 Spin Round 値
+            const getStep14SpinValue = async (targetPage) => {
+                const frames = targetPage.frames();
+                for (const frame of frames) {
+                    const displays = await frame.locator('div[data-text="true"]').all();
+                    if (displays.length >= 2) {
+                        const val = await displays[1].evaluate(el => {
+                            const spans = el.querySelectorAll('span');
+                            return spans.length >= 2 ? spans[1].innerText.replace(/,/g, '') : null;
+                        }).catch(() => null);
+                        if (val && !isNaN(parseInt(val))) return parseInt(val);
+                    }
+                }
+                return null;
+            };
+
+            // 等待遊戲回到待機狀態 (Play button 變回 data-is-playing="false")
+            const waitForPlayIdle = async (targetPage, timeoutMs = 15000) => {
+                const deadline = Date.now() + timeoutMs;
+                while (Date.now() < deadline) {
+                    const frames = targetPage.frames();
+                    for (const frame of frames) {
+                        const btn = frame.locator('button[data-is-playing="false"]').first();
+                        if (await btn.isVisible().catch(() => false)) return true;
+                    }
+                    await targetPage.waitForTimeout(500);
+                }
+                return false;
+            };
+
+            // 等待 Spin Round UI 恢復可見並讀取值 (有 timeout)
+            const waitAndGetSpinValue = async (targetPage, timeoutMs = 8000) => {
+                const deadline = Date.now() + timeoutMs;
+                while (Date.now() < deadline) {
+                    const val = await getStep14SpinValue(targetPage);
+                    if (val !== null) return val;
+                    await targetPage.waitForTimeout(500);
+                }
+                return null;
+            };
+
+            // 將 Spin Round 調整至目標值 (循環點擊 + 直到達標)
+            const adjustSpinTo = async (targetPage, targetVal) => {
+                for (let attempt = 0; attempt < 15; attempt++) {
+                    const curVal = await waitAndGetSpinValue(targetPage, 5000);
+                    if (curVal === null) {
+                        console.log(`[Step 14] Spin value still null, retrying...`);
+                        await targetPage.waitForTimeout(1000);
+                        continue;
+                    }
+                    if (curVal === targetVal) return true;
+
+                    const controls = await findStep14SpinControls(targetPage);
+                    if (!controls) { await targetPage.waitForTimeout(500); continue; }
+
+                    if (curVal < targetVal) {
+                        await controls.plusBtn.click({ force: true });
+                    } else {
+                        await controls.minusBtn.click({ force: true });
+                    }
+                    await targetPage.waitForTimeout(600);
+                }
+                return false;
+            };
+
+            // 先將 Spin Round 重置回 MIN (20)
+            console.log('[Step 14] Resetting Spin Round to MIN (20)...');
+            await adjustSpinTo(newPage, 20);
+
+            const spinRoundTestCases = [20, 50, 100, 200, 500, 1000];
+            let allPassed = true;
+            const results = [];
+
+            for (const targetSpin of spinRoundTestCases) {
+                ensureNotStopped();
+
+                // Step A: 調整 Spin Round 至目標值（循環點擊直到達標）
+                console.log(`[Step 14] Adjusting Spin Round to ${targetSpin}...`);
+                const adjusted = await adjustSpinTo(newPage, targetSpin);
+                if (!adjusted) {
+                    console.log(`[Step 14] ⚠️ Could not reach target spin ${targetSpin}, recording failure.`);
+                    results.push({ targetSpin, displayedCount: null, match: false });
+                    allPassed = false;
+                    continue;
+                }
+
+                const confirmedSpin = await getStep14SpinValue(newPage);
+                console.log(`[Step 14] Confirmed Spin Round = ${confirmedSpin}, Target = ${targetSpin}`);
+
+                // Step B: 點擊 Play button，進入 "Waiting for Next Round" 狀態
+                const playControl = await findPlayBtn14(newPage);
+                if (!playControl) throw new Error('找不到 Play button');
+                await playControl.btn.click({ force: true });
+                console.log(`[Step 14] Play clicked, waiting 1.5s for display...`);
+                await newPage.waitForTimeout(1500);
+
+                // Step C: 讀取 Play button 顯示的倒數數字 (在 "Waiting for Next Round" 狀態下)
+                const displayedCount = await getPlayBtnCount14(newPage);
+                const match = displayedCount === targetSpin;
+                console.log(`[Step 14] Spin Round=${targetSpin}, Play shows=${displayedCount}, Match=${match}`);
+                results.push({ targetSpin, displayedCount, match });
+                if (!match) allPassed = false;
+
+                // Step D: 再次點擊 Play button 取消 "Waiting for Next Round" 狀態
+                // (遊戲中再次點擊綠色圓圈按鈕可取消排隊等待)
+                console.log(`[Step 14] Cancelling play session by clicking Play button again...`);
+                const cancelControl = await findPlayBtn14(newPage);
+                if (cancelControl) {
+                    await cancelControl.btn.click({ force: true });
+                    console.log(`[Step 14] Play cancelled. Waiting for Spin Round controls to reappear...`);
+                } else {
+                    console.log(`[Step 14] Could not find play button to cancel, waiting anyway...`);
+                }
+                await newPage.waitForTimeout(1500);
+
+                // Step E: 等待 Spin Round 控制恢復可見（最多 10 秒）
+                const restoredVal = await waitAndGetSpinValue(newPage, 10000);
+                console.log(`[Step 14] Spin Round restored to: ${restoredVal}`);
+
+                // Step F: 若 targetSpin !== 1000，重置回 20 準備下一輪
+                if (targetSpin !== 1000) {
+                    console.log(`[Step 14] Resetting Spin Round to 20 for next iteration...`);
+                    await adjustSpinTo(newPage, 20);
+                }
+            }
+
+            const resultMsg = results.map(r => `SR=${r.targetSpin}/PB=${r.displayedCount}(${r.match?'✓':'✗'})`).join(', ');
+            updateStepResult2('playBtnSpinCheck', {
+                success: allPassed,
+                message: allPassed ? `Play button 整合測試全數通過: ${resultMsg}` :
+                                     `部分失敗: ${resultMsg}`
+            });
+
+        } catch (err) {
+            console.error('[Step 14] Play Button Spin Check error:', err.message);
+            updateStepResult2('playBtnSpinCheck', { success: false, error: err.message });
+        }
+
         console.log('[Diagnostic] TEST COMPLETED.');
         return { success: true, stopped: false, stepResults: stepResults2 };
     } catch (error) {

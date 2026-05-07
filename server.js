@@ -175,7 +175,7 @@ app.get('/api/progress3', (req, res) => {
 });
 
 app.get('/api/progress4', (req, res) => {
-  res.json(getProgress4 ? getProgress4() : { currentStep: null, stepResults: {}, totalSteps: 8 });
+  res.json(getProgress4 ? getProgress4() : { currentStep: null, stepResults: {}, totalSteps: 14 });
 });
 
 // 獲取 SAC 遊戲列表
