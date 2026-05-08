@@ -741,7 +741,7 @@
     <script>
         const TEST_STEPS = [
             { id: 'streamNSpinDialog', label: '1️⃣ 彈窗檢查' },
-            { id: 'streamingNowClick', label: '2️⃣ 開啟直播間' },
+            { id: 'streamingNowClick', label: '2️⃣ 自動點擊直播主卡片功能測試' },
             { id: 'socketJoinData', label: '3️⃣ WebSocket Join 資料抓取' },
             { id: 'gVersion', label: '4️⃣ 版本號檢測' },
             { id: 'howToPlayClosed', label: '5️⃣ How to play' },
@@ -1040,8 +1040,9 @@
                 const snSuccess = !sn.found || (sn.found && sn.clicked);
                 updateItem('streamNSpinDialog', snSuccess, snSuccess ? '1️⃣ 彈窗檢查 ✓ (已確認或未出現)' : `1️⃣ 彈窗檢查 ✗ (${sn.error || '未點擊確認'})`);
 
-                // 2️⃣ 開啟直播間
-                updateItem('streamingNowClick', main.newPageOpened, main.newPageOpened ? '2️⃣ 開啟直播間 ✓ (已開啟新分頁)' : `2️⃣ 開啟直播間 ✗ (${main.message || '未開啟'})`);
+                // 2️⃣ 自動點擊直播主卡片功能測試
+                const step2Success = main.success || main.newPageOpened || false;
+                updateItem('streamingNowClick', step2Success, step2Success ? '2️⃣ 自動點擊直播主卡片功能測試 ✓ (已開啟新分頁)' : `2️⃣ 自動點擊直播主卡片功能測試 ✗ (${main.message || '未開啟'})`);
 
                 // 3️⃣ WebSocket Join 資料抓取
                 const sock = main.socketJoinData || {};

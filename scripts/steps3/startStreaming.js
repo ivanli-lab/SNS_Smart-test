@@ -21,6 +21,27 @@ async function startStreaming(page, context) {
   } catch (e) {}
   await sacPage.waitForTimeout(1000);
 
+  // 🛡️ 保護機制：嘗試關閉遊戲列表彈窗 (避免蓋住 Start Streaming 按鈕)
+  console.log(`\x1b[35m[STEP 7] 嘗試按下 ESC 鍵並點擊 Admin Panel 以關閉遊戲列表彈窗...\x1b[0m`);
+  try {
+    // 【新增】模擬按下 ESC 鍵，這是關閉 React Modal 的萬用解法
+    await sacPage.keyboard.press('Escape');
+    await sacPage.waitForTimeout(500);
+
+    const adminPanelTitle = sacPage.locator('span:has-text("Admin Panel")').first();
+    if (await adminPanelTitle.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await adminPanelTitle.click({ force: true });
+      console.log(`\x1b[35m[STEP 7] 已點擊 Admin Panel，等待彈窗收起...\x1b[0m`);
+      await sacPage.waitForTimeout(1000);
+    } else {
+      // 備案：盲點擊左上角安全區 (通常是側邊欄頂部)
+      await sacPage.mouse.click(50, 50);
+      await sacPage.waitForTimeout(1000);
+    }
+  } catch (e) {
+    console.log(`\x1b[33m[STEP 7] 關閉彈窗嘗試失敗，繼續執行...\x1b[0m`);
+  }
+
   // 嘗試多種方式尋找 Start Streaming 按鈕
   const btnSelectors = [
     'button[data-start-button="true"]',

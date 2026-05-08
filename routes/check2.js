@@ -1,6 +1,8 @@
 const { chromium } = require('playwright');
 const { askToContinue } = require('../utils/interaction');
 const { setupNetworkLogging, disableNetworkLogging, resetNetworkLogging } = require('../scripts/network-logger');
+const fs = require('fs');
+const path = require('path');
 
 /**
  * Live Slot (測試工具 2) 核心邏輯 - 超強載入同步版
@@ -105,13 +107,96 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }) {
 }
 
 async function startMainFlow(context, page) {
-  // 2️⃣ 開啟直播間
+  // 2️⃣ 自動點擊直播主卡片功能測試
   setCurrentStep('streamingNowClick');
-  stepResults['streamingNowClick'] = { success: false, pending: true, message: '請手動點擊直播間...' };
+  stepResults['streamingNowClick'] = { success: false, pending: true, message: '正在自動尋找並點擊直播主卡片...' };
   ensureNotStopped();
 
-  const newPage = await context.waitForEvent('page', { timeout: 120000 });
-  updateStepResult('streamingNowClick', { success: true, message: '進入直播間，開始強力監控載入進度...' });
+  const screenshotDir = path.join(__dirname, '..', 'public', 'screenshots', 'lobby');
+  if (!fs.existsSync(screenshotDir)) fs.mkdirSync(screenshotDir, { recursive: true });
+
+  const clickStreamerCard = async (targetPage) => {
+      console.log('[Step 2] Waiting for lobby to load...');
+      
+      // 等待大廳有任何內容出現（最多15秒）
+      await targetPage.waitForLoadState('domcontentloaded').catch(() => {});
+      await targetPage.waitForTimeout(3000); // 額外等待 React 渲染完成
+
+      for (let i = 0; i < 5; i++) {
+          console.log(`[Step 2] 第 ${i + 1} 次嘗試點擊...`);
+          
+          // 截圖除錯，看看每次點擊前的畫面狀態
+          await targetPage.screenshot({ path: path.join(screenshotDir, `click-attempt-${i + 1}.png`) }).catch(() => {});
+
+          // 方法 1: Playwright locator (最穩定，能等待元素出現)
+          try {
+              const card = targetPage.locator('div[data-cover="true"]').first();
+              if (await card.isVisible({ timeout: 2000 })) {
+                  console.log('[Step 2] [方法1] 找到 data-cover="true"，直接點擊！');
+                  await card.click({ force: true, timeout: 3000 });
+                  return true;
+              }
+          } catch (e) { console.log(`[Step 2] [方法1] 失敗: ${e.message}`); }
+
+          // 方法 2: 找畫面上任何 img 元素（直播卡片內通常有圖片）
+          try {
+              const imgCount = await targetPage.evaluate(() => {
+                  const imgs = Array.from(document.querySelectorAll('img'));
+                  // 找寬度大於 100px 的圖片（排除小 icon）
+                  const bigImg = imgs.find(img => {
+                      const r = img.getBoundingClientRect();
+                      return r.width > 100 && r.height > 80 && r.top > 50;
+                  });
+                  if (bigImg) {
+                      bigImg.click();
+                      const r = bigImg.getBoundingClientRect();
+                      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+                  }
+                  return null;
+              });
+              if (imgCount) {
+                  console.log(`[Step 2] [方法2] 找到大圖，滑鼠補點 (${imgCount.x}, ${imgCount.y})...`);
+                  await targetPage.mouse.click(imgCount.x, imgCount.y);
+                  return true;
+              }
+          } catch (e) { console.log(`[Step 2] [方法2] 失敗: ${e.message}`); }
+
+          // 方法 3: 根據 1366x768 解析度的固定座標盲點擊 "Streaming Now" 第一張卡片
+          // 從截圖觀察，Streaming Now 區塊的第一張卡片大約在 (700, 200) 附近
+          if (i >= 2) {
+              console.log('[Step 2] [方法3] 啟動固定座標盲點擊...');
+              const coords = [
+                  { x: 700, y: 210 },  // Streaming Now 第一張卡片中央
+                  { x: 870, y: 210 },  // Streaming Now 第二張卡片中央
+                  { x: 530, y: 210 },  // 左邊備用
+              ];
+              for (const { x, y } of coords) {
+                  await targetPage.mouse.click(x, y);
+                  await targetPage.waitForTimeout(500);
+              }
+              return true; // 盲點擊後直接回傳 true，讓 waitForEvent 去決定是否成功開了新分頁
+          }
+
+          await targetPage.waitForTimeout(2000);
+      }
+      return false;
+  };
+
+  const clickPromise = clickStreamerCard(page).then(success => {
+      if (!success) throw new Error('所有點擊方法均已嘗試，等待手動介入');
+  });
+
+  const [newPage] = await Promise.all([
+      context.waitForEvent('page', { timeout: 35000 }),
+      clickPromise
+  ]).catch(async (err) => {
+      console.log(`[Step 2] 自動點擊失敗 (${err.message})，等待手動點擊...`);
+      updateStepResult('streamingNowClick', { success: false, pending: true, message: '自動點擊失敗，請點擊直播主卡片' });
+      return [await context.waitForEvent('page', { timeout: 90000 })];
+  });
+
+
+  updateStepResult('streamingNowClick', { success: true, newPageOpened: true, message: '進入直播間，開始強力監控載入進度...' });
 
   // 🟢 搶先攔截 WebSocket
   let socketData = null;

@@ -8,7 +8,7 @@ if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir, { recursive: true });
 
 let currentStep2 = null;
 const stepResults2 = {};
-const totalSteps2 = 14;
+const totalSteps2 = 15;
 let activeBrowser = null;
 let stopRequested = false;
 let isRunning = false;
@@ -489,34 +489,59 @@ async function checkWebsite2(url) {
         });
 
         const clickStreamerCard = async (targetPage) => {
-            // 優先尋找帶有 LIVE 標籤的卡片
-            const cards = await targetPage.locator('div[data-cover="true"]').all();
-            console.log(`[Step 4] Found ${cards.length} streamer cards.`);
-            
-            if (cards.length > 0) {
-                // 嘗試點擊第一個卡片
-                console.log('[Step 4] Clicking the first available streamer card...');
-                await cards[0].click({ force: true });
-                return true;
-            }
-            
-            // 備案：尋找任何看起來像卡片的容器
-            const containers = await targetPage.locator('div[class*="_container_"]').all();
-            for (const container of containers) {
-                if (await container.isVisible()) {
-                    console.log('[Step 4] Clicking container fallback...');
-                    await container.click({ force: true });
-                    return true;
-                }
+            console.log('[Step 4] Starting aggressive streamer card click strategy...');
+            for (let i = 0; i < 8; i++) { // 嘗試 8 次
+                await targetPage.waitForTimeout(1000);
+                try {
+                    const clickedBox = await targetPage.evaluate(() => {
+                        const keywords = ['viewers', 'LIVE', 'Sn\'S'];
+                        const els = Array.from(document.querySelectorAll('div, span, p'));
+                        
+                        for (let el of els) {
+                            const txt = el.innerText || '';
+                            if (keywords.some(k => txt.includes(k))) {
+                                let parent = el;
+                                let depth = 0;
+                                while(parent && depth < 5) {
+                                    const rect = parent.getBoundingClientRect();
+                                    if (rect.width > 120 && rect.height > 80 && rect.top > 0) {
+                                        parent.click(); // JS 點擊
+                                        return { x: rect.x + 50, y: rect.y + 50 };
+                                    }
+                                    parent = parent.parentElement;
+                                    depth++;
+                                }
+                            }
+                        }
+                        
+                        const imgs = Array.from(document.querySelectorAll('#streaming-list-container img, div[data-cover="true"] img'));
+                        if (imgs.length > 0) {
+                            imgs[0].click();
+                            const rect = imgs[0].getBoundingClientRect();
+                            return { x: rect.x + 20, y: rect.y + 20 };
+                        }
+                        return null;
+                    });
+
+                    if (clickedBox) {
+                        console.log(`[Step 4] Found card. Firing JS click & Mouse click at x:${clickedBox.x}, y:${clickedBox.y}...`);
+                        await targetPage.mouse.click(clickedBox.x, clickedBox.y);
+                        return true;
+                    }
+                } catch (e) { }
             }
             return false;
         };
 
+        const clickPromise = clickStreamerCard(page).then(success => {
+            if (!success) throw new Error('畫面上找不到任何直播主卡片');
+        });
+
         const [newPage] = await Promise.all([
             context.waitForEvent('page', { timeout: 30000 }),
-            clickStreamerCard(page)
+            clickPromise
         ]).catch(async (err) => {
-            console.log('[Step 4] Automated click/open failed, falling back to manual wait...');
+            console.log(`[Step 4] 自動點擊失敗 (${err.message})，等待手動點擊...`);
             updateStepResult2('manualInteraction', { success: false, waiting: true, message: '自動點擊失敗，請點擊直播主卡片' });
             return [await context.waitForEvent('page', { timeout: 90000 })];
         });
@@ -1609,6 +1634,115 @@ async function checkWebsite2(url) {
         } catch (err) {
             console.error('[Step 14] Play Button Spin Check error:', err.message);
             updateStepResult2('playBtnSpinCheck', { success: false, error: err.message });
+        }
+
+        // ⏳ 第 14 步冷卻 3 秒
+        console.log('[Step 14] 完成，等待 3 秒...');
+        await newPage.waitForTimeout(3000);
+
+        // ==================== [STEP 15] Play button plus Spin Round 整合功能確認 ====================
+        setCurrentStep2('playPlusSpinRound');
+        updateStepResult2('playPlusSpinRound', { success: false, pending: true, message: '正在執行第 15 步...' });
+        try {
+            console.log('[Step 15] 開始執行 Play button plus Spin Round 整合功能確認...');
+
+            // Step 15.1: 重新載入網頁
+            console.log('[Step 15.1] 重新載入網頁 (Refresh)...');
+            await newPage.reload({ waitUntil: 'domcontentloaded' });
+            await newPage.waitForTimeout(3000);
+
+            // Step 15.2 & 15.3: 處理「How to Play」彈窗，按下 X 關閉
+            console.log('[Step 15.2] 等待 How to Play 彈窗出現...');
+            try {
+                // 等待 How to Play 彈窗出現 (最多 8 秒)
+                await newPage.waitForSelector('.modal-header, svg[class*="closeBtn"]', { timeout: 8000 });
+                console.log('[Step 15.3] 找到 How to Play 彈窗，點擊 X 關閉...');
+                const closeBtn = newPage.locator('svg[class*="closeBtn"], path[class*="closeBtn"], button[class*="closeBtn"], .modal-header button').first();
+                if (await closeBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+                    await closeBtn.click({ force: true });
+                    console.log('[Step 15.3] 已點擊 X 按鈕，等待彈窗關閉...');
+                    await newPage.waitForTimeout(1000);
+                } else {
+                    // 備案：按下 ESC 關閉
+                    await newPage.keyboard.press('Escape');
+                    console.log('[Step 15.3] 備案：已按下 ESC 關閉彈窗');
+                    await newPage.waitForTimeout(1000);
+                }
+            } catch (e) {
+                console.log('[Step 15.2] How to Play 彈窗未出現，跳過關閉步驟');
+            }
+
+            // Step 15.4: 點擊中央下方的「PLAY」按鈕
+            console.log('[Step 15.4] 點擊 PLAY 按鈕...');
+            const playBtn = newPage.locator('button[data-is-playing], button[class*="_container_qible"]').first();
+            if (await playBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+                await playBtn.click({ force: true });
+                console.log('[Step 15.4] 已點擊 PLAY 按鈕，等待 Add Round 列表出現...');
+                await newPage.waitForTimeout(2000);
+            } else {
+                throw new Error('找不到 PLAY 按鈕');
+            }
+
+            // 讀取點擊 PLAY 後的初始數值
+            const getSpinCount = async () => {
+                return await newPage.evaluate(() => {
+                    const btn = document.querySelector('button[data-is-playing="true"], button[class*="_container_qible"]');
+                    if (!btn) return null;
+                    const txt = btn.innerText || btn.textContent || '';
+                    const num = parseInt(txt.trim());
+                    return isNaN(num) ? null : num;
+                });
+            };
+
+            const initialCount = await getSpinCount();
+            console.log(`[Step 15.4] 點擊 PLAY 後初始數值: ${initialCount}`);
+
+            // Step 15.5: 依序點擊 +10, +20, +50, +100, +200（每次間隔 1 秒）
+            const addRoundValues = ['+10', '+20', '+50', '+100', '+200'];
+            const stepResults15 = [];
+            let currentCount = initialCount;
+            const expectedAdditions = [10, 20, 50, 100, 200];
+
+            for (let i = 0; i < addRoundValues.length; i++) {
+                const btnText = addRoundValues[i];
+                const expectedAdd = expectedAdditions[i];
+                const expectedNext = currentCount !== null ? currentCount + expectedAdd : null;
+
+                console.log(`[Step 15.5] 點擊 ${btnText} 按鈕 (預期: ${currentCount} + ${expectedAdd} = ${expectedNext})...`);
+
+                // 定位 Add Round 按鈕
+                const addBtn = newPage.locator(`div[data-type="BUTTONS"] button:has-text("${btnText}"), div[class*="_buttonsContainer"] button:has-text("${btnText}")`).first();
+                if (await addBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+                    await addBtn.click({ force: true });
+                } else {
+                    // 備案：文字完全匹配
+                    await newPage.locator(`button:has-text("${btnText}")`).first().click({ force: true }).catch(() => {});
+                }
+
+                await newPage.waitForTimeout(1000); // Step 15.5 規定每次間隔 1 秒
+
+                // Step 15.6: 驗證中央綠色方框數字是否增加
+                const afterCount = await getSpinCount();
+                const matched = expectedNext !== null && afterCount === expectedNext;
+                console.log(`[Step 15.6] 點擊 ${btnText} 後: 顯示=${afterCount}, 預期=${expectedNext}, 驗證=${matched ? '✓' : '✗'}`);
+                stepResults15.push({ btn: btnText, before: currentCount, after: afterCount, expected: expectedNext, matched });
+                currentCount = afterCount;
+            }
+
+            const allMatched = stepResults15.every(r => r.matched);
+            const resultSummary = stepResults15.map(r => `${r.btn}:${r.before}→${r.after}(${r.matched ? '✓' : '✗'})`).join(', ');
+            console.log(`[Step 15] 結果: ${allMatched ? '全部通過' : '部分失敗'} - ${resultSummary}`);
+
+            updateStepResult2('playPlusSpinRound', {
+                success: allMatched,
+                message: allMatched
+                    ? `Play + Spin Round 整合測試全數通過: ${resultSummary}`
+                    : `部分驗證失敗: ${resultSummary}`
+            });
+
+        } catch (err) {
+            console.error('[Step 15] Play Plus Spin Round error:', err.message);
+            updateStepResult2('playPlusSpinRound', { success: false, error: err.message });
         }
 
         console.log('[Diagnostic] TEST COMPLETED.');

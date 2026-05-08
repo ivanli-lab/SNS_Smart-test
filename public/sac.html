@@ -870,6 +870,14 @@
                             <span class="test-item-label">7️⃣ 點擊 Start Streaming</span>
                             <span class="test-item-status">⏸️</span>
                         </div>
+                        <div class="test-item pending" data-test="stopStreaming">
+                            <span class="test-item-label">8️⃣ 點擊 Stop Streaming</span>
+                            <span class="test-item-status">⏸️</span>
+                        </div>
+                        <div class="test-item pending" data-test="openSpeechToText">
+                            <span class="test-item-label">9️⃣ 開啟 Open Speech to Text</span>
+                            <span class="test-item-status">⏸️</span>
+                        </div>
                     </div>
                 </article>
 
@@ -1183,7 +1191,13 @@
                                         break;
                                     case 'startStreaming':
                                         detailText = `✓ 已成功點擊`;
-                                        // 當第 7 點成功時，更新 Current Step 顯示測試完成結果
+                                        break;
+                                    case 'stopStreaming':
+                                        detailText = `✓ 已成功點擊`;
+                                        break;
+                                    case 'openSpeechToText':
+                                        detailText = `✓ 已成功點擊`;
+                                        // 當最後一步成功時，更新 Current Step 顯示測試完成結果
                                         placeholderTextEl.textContent = `測試完成: ${pass + 1} 通過 / ${fail} 失敗`;
                                         // [新增] 立即隱藏轉圈圈並停止狀態
                                         document.getElementById('loadingSpinner').classList.add('hidden');
@@ -1242,7 +1256,9 @@
                 'checkGameLoad': '4️⃣ 載入遊戲 (穩定性檢查)',
                 'checkSpaceSpin': '5️⃣ Spin 鈕點擊測試',
                 'gameOperation': '6️⃣ AutoSpin 鈕點擊測試',
-                'startStreaming': '7️⃣ 點擊 Start Streaming'
+                'startStreaming': '7️⃣ 點擊 Start Streaming',
+                'stopStreaming': '8️⃣ 點擊 Stop Streaming',
+                'openSpeechToText': '9️⃣ 開啟 Open Speech to Text'
             };
             return labels[id] || id;
         }

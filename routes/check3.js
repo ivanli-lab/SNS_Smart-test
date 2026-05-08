@@ -7,7 +7,7 @@ const { askToContinue } = require('../utils/interaction');
 // 狀態管理
 let currentStep = null;
 const stepResults = {};
-const totalSteps = 7;
+const totalSteps = 9;
 let activeBrowser = null;
 let stopRequested = false;
 
@@ -393,6 +393,11 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
 
     // 將捕捉到的新分頁 (gamePage) 存入 diag，讓後面的步驟可以用它
     diag.activeGamePage = gamePage;
+
+    // ⏳ 依使用者要求：點擊遊戲後增加 5 秒冷卻時間
+    console.log('--- [DIAG] 依設定，點擊遊戲後等待 5 秒... ---');
+    await page.waitForTimeout(5000);
+    ensureNotStopped();
     // --- 修改結束 ---
 
     // --- [STEP 4] Waiting for Game Load ---
@@ -409,8 +414,8 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
     ensureNotStopped();
 
     // [關鍵] 等待遊戲引擎與伺服器連線完全初始化，再開始 Spin 測試
-    console.log('--- [DIAG] 等待 8 秒讓遊戲引擎完全就緒... ---');
-    await gamePage.waitForTimeout(8000);
+    console.log('--- [DIAG] 等待 30 秒讓遊戲引擎完全就緒... ---');
+    await gamePage.waitForTimeout(30000);
     ensureNotStopped();
 
     // 確認 Step 4 是否成功，作為 Step 5、6 的執行前提
@@ -457,6 +462,61 @@ async function checkWebsite(url, viewport = { width: 1366, height: 768 }, select
     } catch (err) {
       console.error('--- [ERROR] Start Streaming 失敗:', err.message);
       updateStepResult('startStreaming', { success: false, error: err.message });
+    }
+    ensureNotStopped();
+
+    // ⏳ 第 7 步冷卻
+    if (stepResults['startStreaming']?.success) {
+      console.log('--- [DIAG] 第 7 步執行完畢，等待 3 秒... ---');
+      await page.waitForTimeout(3000);
+    }
+    ensureNotStopped();
+
+    // --- [STEP 8] Stop Streaming ---
+    setCurrentStep('stopStreaming');
+    try {
+      const sacPage = context.pages().find(p => p.url().includes('sac')) || page;
+      await sacPage.bringToFront().catch(() => {});
+      const stopBtn = sacPage.locator('button:has-text("Stop Streaming"), button.btn-danger:has-text("Stop")').first();
+      if (await stopBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await stopBtn.click();
+        updateStepResult('stopStreaming', { success: true, message: '已成功點擊 Stop Streaming' });
+      } else {
+        updateStepResult('stopStreaming', { success: false, error: '找不到 Stop Streaming 按鈕' });
+      }
+    } catch (err) {
+      console.error('--- [ERROR] Stop Streaming 失敗:', err.message);
+      updateStepResult('stopStreaming', { success: false, error: err.message });
+    }
+    
+    // ⏳ 第 8 步冷卻
+    if (stepResults['stopStreaming']?.success) {
+      console.log('--- [DIAG] 第 8 步執行完畢，等待 3 秒... ---');
+      await page.waitForTimeout(3000);
+    }
+    ensureNotStopped();
+
+    // --- [STEP 9] Open Speech to Text ---
+    setCurrentStep('openSpeechToText');
+    try {
+      const sacPage = context.pages().find(p => p.url().includes('sac')) || page;
+      await sacPage.bringToFront().catch(() => {});
+      const speechBtn = sacPage.locator('button:has-text("Open Speech to Text"), button.btn-primary:has-text("Speech")').first();
+      if (await speechBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await speechBtn.click();
+        updateStepResult('openSpeechToText', { success: true, message: '已成功點擊 Open Speech to Text' });
+      } else {
+        updateStepResult('openSpeechToText', { success: false, error: '找不到 Open Speech to Text 按鈕' });
+      }
+    } catch (err) {
+      console.error('--- [ERROR] Open Speech to Text 失敗:', err.message);
+      updateStepResult('openSpeechToText', { success: false, error: err.message });
+    }
+
+    // ⏳ 第 9 步冷卻
+    if (stepResults['openSpeechToText']?.success) {
+      console.log('--- [DIAG] 第 9 步執行完畢，等待 3 秒... ---');
+      await page.waitForTimeout(3000);
     }
     ensureNotStopped();
 
